@@ -4,10 +4,9 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import { z } from "zod";
 import { randomUUID } from "crypto";
 import prismaPlugin from "./plugins/prisma";
-import { registerSSEPushPlugin } from "./plugins/websocket";
+import * as websocketModule from "./plugins/websocket";
 import { prisma } from "./lib/prisma";
 import { alertQueue } from "./lib/queue";
 import { sorobanServer } from "./lib/soroban";
@@ -20,6 +19,7 @@ import { accountRoutes } from "./modules/account/account.routes";
 import { registerSecurityHeaders } from "./middleware/security.middleware";
 import { registerCorrelation } from "./middleware/correlation.middleware";
 import { sorobanStateRoutes } from "./modules/soroban-state/soroban-state.routes";
+import { wasmAnalyzerRoutes } from "./modules/wasm-analyzer/wasm-analyzer.routes";
 import { notificationsRoutes } from "./modules/notifications/notifications.routes";
 import { alertRulesRoutes } from "./modules/alert-rules/alert-rules.routes";
 import { deadLettersRoutes } from "./modules/dead-letters/dead-letters.routes";
@@ -35,8 +35,6 @@ import { loggerOptions } from "./lib/logger";
 import { env } from "./config/env";
 import metricsPlugin from "./plugins/metrics";
 
-import { checkRedisReadiness, getRedisStatus } from "./lib/redis";
-import { dbFailover } from "./lib/db-failover";
 import degradedModePlugin from "./plugins/degraded-mode";
 import { AppError } from "./lib/errors";
 
@@ -86,8 +84,72 @@ export const buildApp = async () => {
     },
   });
 
+  const allowedOrigins = new Set(
+    [
+      (env as { APP_URL?: string }).APP_URL,
+      ...(env.CSRF_ALLOWED_ORIGINS || "").split(","),
+    ]
+      .map((origin) => origin?.trim())
+      .filter((origin): origin is string => Boolean(origin)),
+  );
+
   await app.register(cors, {
-    origin: true, // Allow all origins for dev, or specify 'http://localhost:3000'
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
+    credentials: true,
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof AppError) {
+      if (error.statusCode >= 500) {
+        request.log.error({ err: error }, error.message);
+      } else {
+        request.log.warn({ err: error }, error.message);
+      }
+      return reply.status(error.statusCode).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.details !== undefined ? { details: error.details } : {}),
+          requestId: request.id,
+        },
+      });
+    }
+
+    const maybeFastifyErr = error as { statusCode?: number; validation?: unknown; message?: string };
+    if (maybeFastifyErr.statusCode === 429) {
+      return reply.status(429).send({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message: maybeFastifyErr.message || "Rate limit exceeded",
+      });
+    }
+
+    if (Array.isArray(maybeFastifyErr.validation)) {
+      request.log.warn({ err: error }, "Request schema validation failed");
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+          details: maybeFastifyErr.validation,
+          requestId: request.id,
+        },
+      });
+    }
+
+    request.log.error({ err: error }, "Unhandled error");
+    return reply.status(500).send({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "An unexpected error occurred",
+        requestId: request.id,
+      },
+    });
   });
 
   // Issue #567: correlation IDs — attach x-request-id to every request's
@@ -122,8 +184,11 @@ export const buildApp = async () => {
   await app.register(metricsPlugin);
   await app.register(degradedModePlugin);
 
-  // Issue #64: SSE push endpoint — GET /events
-  await app.register(registerSSEPushPlugin);
+  // Real-time WebSocket (/ws) + authenticated SSE push endpoint (GET /events)
+  if (Object.keys(websocketModule).includes("default") && typeof websocketModule.default === "function") {
+    await app.register(websocketModule.default);
+  }
+  await app.register(websocketModule.registerSSEPushPlugin);
 
   app.get("/health", async () => {
     return { status: "ok" };
@@ -178,6 +243,8 @@ export const buildApp = async () => {
   app.register(exportsRoutes);
   app.register(simulationRoutes);
   app.register(discordInteractionsRoutes);
+  app.register(sorobanStateRoutes);
+  app.register(wasmAnalyzerRoutes);
   app.register(adminRoutes);
   app.register(auditRoutes);
 

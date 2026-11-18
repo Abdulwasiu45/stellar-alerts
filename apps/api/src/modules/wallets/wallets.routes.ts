@@ -16,10 +16,20 @@ export async function walletsRoutes(app: FastifyInstance) {
     { preHandler: [requireScopes('wallets:write')] },
     walletsController.addWallet.bind(walletsController),
   );
+  app.post(
+    '/wallets/bulk-import',
+    { preHandler: [requireScopes('wallets:write')] },
+    walletsController.bulkImport.bind(walletsController),
+  );
   app.get(
     '/wallets',
     { preHandler: [requireScopes('wallets:read')] },
     walletsController.getWallets.bind(walletsController),
+  );
+  app.get(
+    '/wallets/:id/export',
+    { preHandler: [requireScopes('wallets:read')] },
+    exportController.exportWallet.bind(exportController),
   );
   app.get(
     '/wallets/:id/ingestion-status',
@@ -30,6 +40,11 @@ export async function walletsRoutes(app: FastifyInstance) {
     '/wallets/:id/metadata',
     { preHandler: [requireScopes('wallets:write')] },
     walletsController.updateWalletMetadata.bind(walletsController),
+  );
+  app.patch(
+    '/wallets/:id/tags',
+    { preHandler: [requireScopes('wallets:write')] },
+    walletsController.updateWalletTags.bind(walletsController),
   );
   app.delete(
     '/wallets/:id',

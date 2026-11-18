@@ -2,8 +2,25 @@ import * as StellarSdk from 'stellar-sdk';
 import crypto from 'crypto';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
+import { stellarNetwork } from '../../config/network';
 import { generateSessionToken } from '../../utils/jwt';
 import { isValidEd25519PublicKey } from '@stellar-alerts/shared';
+
+const consumedChallengeHashes = new Map<string, number>();
+
+function markChallengeConsumed(txHashHex: string, maxTimeEpochSeconds: number): boolean {
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (consumedChallengeHashes.size > 10_000) {
+    for (const [k, exp] of consumedChallengeHashes.entries()) {
+      if (exp < nowSec) consumedChallengeHashes.delete(k);
+    }
+  }
+  if (consumedChallengeHashes.has(txHashHex)) {
+    return false;
+  }
+  consumedChallengeHashes.set(txHashHex, maxTimeEpochSeconds + 60);
+  return true;
+}
 
 export interface SEP10ChallengeResult {
   transaction: string;
@@ -37,7 +54,8 @@ export class SEP10Service {
     networkPassphrase?: string
   ) {
     this.homeDomain = homeDomain || process.env.SEP10_HOME_DOMAIN || 'stellar-alerts.org';
-    this.networkPassphrase = networkPassphrase || process.env.STELLAR_NETWORK_PASSPHRASE || StellarSdk.Networks.TESTNET;
+    this.networkPassphrase =
+      networkPassphrase || process.env.STELLAR_NETWORK_PASSPHRASE || stellarNetwork.networkPassphrase;
 
     const secret = serverSecret || process.env.STELLAR_SERVER_SECRET || process.env.STELLAR_SIGNING_KEY;
     if (secret && secret.startsWith('S') && secret.length === 56) {
@@ -207,8 +225,16 @@ export class SEP10Service {
   public async verifyAndIssueSession(transactionXdr: string): Promise<SEP10AuthSessionResponse> {
     const { clientPublicKey } = this.verifyChallenge(transactionXdr);
 
-    // Find or create wallet and linked user
-    let wallet = await prisma.wallet.findUnique({
+    const parsedTx = StellarSdk.TransactionBuilder.fromXDR(transactionXdr, this.networkPassphrase) as StellarSdk.Transaction;
+    const txHashHex = parsedTx.hash().toString('hex');
+    const maxTime = Number(parsedTx.timeBounds?.maxTime ?? Math.floor(Date.now() / 1000) + 300);
+    if (!markChallengeConsumed(txHashHex, maxTime)) {
+      throw new Error('Challenge transaction has already been used');
+    }
+
+    // Find active linked wallet; only auto-login into synthetic SEP-10 accounts
+    // (never allow a watch-only wallet entry to log into another user's email account).
+    const wallet = await prisma.wallet.findUnique({
       where: { publicKey: clientPublicKey },
       include: { user: true },
     });
@@ -216,24 +242,46 @@ export class SEP10Service {
     let userId: string;
     let email: string;
 
-    if (wallet && wallet.user) {
+    if (
+      wallet &&
+      wallet.user &&
+      !(wallet as { deletedAt?: Date | null }).deletedAt &&
+      wallet.user.email.endsWith('@stellar-alerts.org')
+    ) {
       userId = wallet.user.id;
       email = wallet.user.email;
     } else {
-      // Find existing user with placeholder email or create new user
       const placeholderEmail = `${clientPublicKey.substring(0, 12).toLowerCase()}@stellar-alerts.org`;
-      const user = await prisma.user.create({
-        data: {
-          email: placeholderEmail,
-          wallets: {
-            create: {
-              publicKey: clientPublicKey,
+      const existingSep10User =
+        typeof (prisma.user as { findUnique?: unknown }).findUnique === 'function'
+          ? await prisma.user.findUnique({ where: { email: placeholderEmail } })
+          : null;
+
+      if (existingSep10User) {
+        userId = existingSep10User.id;
+        email = existingSep10User.email;
+      } else if (!wallet) {
+        const user = await prisma.user.create({
+          data: {
+            email: placeholderEmail,
+            wallets: {
+              create: {
+                publicKey: clientPublicKey,
+              },
             },
           },
-        },
-      });
-      userId = user.id;
-      email = user.email;
+        });
+        userId = user.id;
+        email = user.email;
+      } else {
+        const user = await prisma.user.create({
+          data: {
+            email: placeholderEmail,
+          },
+        });
+        userId = user.id;
+        email = user.email;
+      }
     }
 
     const token = generateSessionToken({ id: userId, email });

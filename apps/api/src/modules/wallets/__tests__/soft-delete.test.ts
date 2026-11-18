@@ -3,21 +3,18 @@ import { WalletsService } from '../wallets.service';
 import { CleanupWorker } from '../../../workers/cleanup.worker';
 import { prisma } from '../../../lib/prisma';
 
-vi.mock('../../../lib/prisma', () => ({
-  prisma: {
-    wallet: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-      deleteMany: vi.fn(),
-      findMany: vi.fn(),
-    },
-  },
-  prismaRead: {
-    wallet: {
-      findMany: vi.fn(),
-    },
-  },
-}));
+vi.mock('../../../lib/prisma', () => {
+  const wallet = {
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    deleteMany: vi.fn(),
+    findMany: vi.fn(),
+  };
+  return {
+    prisma: { wallet },
+    prismaRead: { wallet },
+  };
+});
 
 describe('Soft-Delete Lifecycle & Cascade Cleanup Worker (#776)', () => {
   let walletsService: WalletsService;

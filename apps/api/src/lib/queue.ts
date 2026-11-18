@@ -24,8 +24,11 @@ import { dispatchSlackAlert, isValidSlackWebhookUrl } from '../utils/slack';
 import { dispatchPushNotification, PushNotificationData } from '../utils/push-protocol';
 import { classifyWorkerError, getWorkerMaxAttempts, PermanentWorkerError } from './worker-retry-policy';
 import { QueueLaneManager, QueueLane, resolveLaneForAlert } from './queue-lanes';
+import type { FilterRuleGroup } from './rules-engine';
 
 const queueLog = createLogger({ module: 'Queue' });
+
+export type AlertFilterConfig = FilterRuleGroup;
 
 export interface AlertJobData {
   paymentId: string;
@@ -36,10 +39,19 @@ export interface AlertJobData {
   assetIssuer?: string | null;
   fromAddress: string;
   receivedAt: string;
+  /** Correlation ID propagated from the originating HTTP request, if any. */
+  requestId?: string;
+  /** W3C traceparent propagated across BullMQ into webhook dispatch spans. */
+  traceparent?: string;
   /** Optional alert filter config — if provided, alerts are suppressed when rules fail */
   filterConfig?: AlertFilterConfig;
   /** Severity classification used to route the job into a priority lane */
   severity?: string;
+}
+
+interface WebhookDispatchMeta {
+  webhookId: string;
+  traceparent?: string;
 }
 
 const redisHost = process.env.REDIS_HOST || "localhost";
@@ -51,7 +63,7 @@ export let alertQueue: Queue<AlertJobData> | null = null;
 export let dlqQueue: Queue<AlertJobData> | null = null;
 export let alertQueueEvents: QueueEvents | null = null;
 export let alertWorker: Worker<AlertJobData> | null = null;
-export let queueLaneManager: QueueLaneManager | null = null;
+export let queueLaneManager: QueueLaneManager<AlertJobData> | null = null;
 
 export const circuitBreakers = new Map<string, CircuitBreaker<any>>();
 
@@ -145,7 +157,7 @@ async function assertBotIsChannelAdmin(botToken: string, chatId: string): Promis
 const WEBHOOK_LOG_RESPONSE_LIMIT = 5000;
 const WEBHOOK_LOG_PAYLOAD_LIMIT = 10000;
 
-async function readWebhookResponseBody(response: Response): Promise<string> {
+async function readWebhookResponseBody(response: { text(): Promise<string> }): Promise<string> {
   try {
     return (await response.text()).substring(0, WEBHOOK_LOG_RESPONSE_LIMIT);
   } catch {
@@ -592,7 +604,7 @@ try {
   dlqQueue = new Queue<AlertJobData>('payment-alerts-dlq', { connection });
   alertQueueEvents = new QueueEvents('payment-alerts', { connection });
 
-  queueLaneManager = new QueueLaneManager({
+  queueLaneManager = new QueueLaneManager<AlertJobData>({
     connection,
     defaultJobOptions: {
       attempts: getWorkerMaxAttempts(),

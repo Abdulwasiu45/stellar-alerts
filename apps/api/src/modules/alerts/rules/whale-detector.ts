@@ -67,7 +67,7 @@ export class WhaleDetectorRule {
 
   constructor(volumeService: RollingVolumeService, config: Partial<WhaleDetectorConfig> = {}) {
     this.volumeService = volumeService;
-    this.config = { ...DEFAULT_WHALE_CONFIG, };
+    this.config = { ...DEFAULT_WHALE_CONFIG, ...config };
 }
 
   /**

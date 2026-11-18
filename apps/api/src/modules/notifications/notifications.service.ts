@@ -15,6 +15,10 @@ import { isValidSlackWebhookUrl } from '../../utils/slack';
 import { ValidationError } from '../../lib/errors';
 import { dispatchPushNotification } from '../../utils/push-protocol';
 import { createLogger } from '../../lib/logger';
+import {
+  normalizeEmailTemplatePreferences,
+  parseStoredEmailTemplate,
+} from '../../utils/email-template';
 import { slackNotificationProvider } from './providers/slack.provider';
 import { discordNotificationProvider } from './providers/discord.provider';
 import type { DiscordAlertInput, DiscordDispatchOptions } from './providers/discord.provider';

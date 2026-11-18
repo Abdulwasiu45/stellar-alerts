@@ -204,7 +204,7 @@ export class OpsgenieProvider {
     options: OpsgenieDispatchOptions = {},
   ): Promise<OpsgenieDispatchResult> {
     const payload = this.buildCreatePayload(input);
-    return this.sendPayload('create', payload, payload.alias, options);
+    return this.sendPayload('create', payload, payload.alias ?? 'stellar-alerts', options);
   }
 
   /**

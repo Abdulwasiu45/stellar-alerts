@@ -63,29 +63,81 @@ export class BulkImportService {
       }),
     );
 
-    // Fetch existing user wallets to deduplicate
-    const existing = await prisma.wallet.findMany({
-      where: { userId },
-      select: { publicKey: true },
-    });
-    const existingKeys = new Set(existing.map((w: any) => w.publicKey));
+    // Fetch existing wallets (across accounts so global publicKey uniqueness
+    // never triggers an uncaught P2002 mid-transaction, and include soft-deleted
+    // same-user rows for clean reactivation).
+    interface ExistingBulkWalletRow {
+      id?: string;
+      userId?: string;
+      publicKey: string;
+      label?: string | null;
+      deletedAt?: Date | null;
+    }
+
+    const existing = (await prisma.wallet.findMany({
+      where:
+        validItems.length > 0
+          ? { publicKey: { in: validItems.map((item) => item.publicKey) } }
+          : { userId },
+      select: {
+        id: true,
+        userId: true,
+        publicKey: true,
+        label: true,
+        deletedAt: true,
+      },
+    })) as ExistingBulkWalletRow[];
+
+    const existingByKey = new Map<string, ExistingBulkWalletRow>();
+    for (const row of existing) {
+      existingByKey.set(row.publicKey, row);
+    }
 
     const toInsert: BulkImportItem[] = [];
+    const toReactivate: Array<{ existing: ExistingBulkWalletRow; item: BulkImportItem }> = [];
     let skippedDuplicates = 0;
     const seenInBatch = new Set<string>();
 
     for (const item of validItems) {
-      if (existingKeys.has(item.publicKey) || seenInBatch.has(item.publicKey)) {
+      if (seenInBatch.has(item.publicKey)) {
         skippedDuplicates++;
-      } else {
-        seenInBatch.add(item.publicKey);
+        continue;
+      }
+      seenInBatch.add(item.publicKey);
+
+      const existingRow = existingByKey.get(item.publicKey);
+      if (!existingRow) {
         toInsert.push(item);
+      } else if (existingRow.userId !== undefined && existingRow.userId !== userId) {
+        invalidKeys.push({
+          publicKey: item.publicKey,
+          reason: 'Wallet public key is already registered to another account',
+        });
+      } else if (existingRow.deletedAt && existingRow.id) {
+        toReactivate.push({ existing: existingRow, item });
+      } else {
+        skippedDuplicates++;
       }
     }
 
-    // Insert all records within a single database transaction
-    const createdWallets = await prisma.$transaction(async (tx: any) => {
-      const results = [];
+    // Insert/reactivate all records within a single database transaction
+    const createdWallets = await prisma.$transaction(async (tx) => {
+      const results: Array<{ id: string; publicKey: string; label: string | null }> = [];
+      for (const { existing: existingRow, item } of toReactivate) {
+        const reactivated = await tx.wallet.update({
+          where: { id: existingRow.id! },
+          data: {
+            deletedAt: null,
+            label: item.label ?? existingRow.label ?? null,
+            tags: item.tags || [],
+          },
+        });
+        results.push({
+          id: reactivated.id,
+          publicKey: reactivated.publicKey,
+          label: reactivated.label,
+        });
+      }
       for (const item of toInsert) {
         const created = await tx.wallet.create({
           data: {

@@ -1,6 +1,12 @@
-import { Job, Worker, Queue } from 'bullmq';
+import { Worker, type ConnectionOptions } from 'bullmq';
 import { redis, registerRedisCleanupTask } from '../lib/redis';
 import { createLogger } from '../lib/logger';
+import {
+  QueueLaneManager,
+  type QueueLane,
+  QUEUE_LANE_CONFIGS,
+  resolveLaneForAlert,
+} from '../lib/queue-lanes';
 import { RedisCircuitBreaker, CircuitBreakerOpenError } from '../modules/alerts/circuit-breaker';
 import { webhookTelemetry } from '../modules/webhooks/webhook-telemetry';
 import {
@@ -46,18 +52,19 @@ export class DispatcherWorker {
   private circuitBreaker: RedisCircuitBreaker;
   private workers: Map<QueueLane, Worker<WebhookDispatchJobData>> = new Map();
   private transport: WebhookTransportFn;
-  private sssfFilter: SssfFilter;
+  private ssrfFilter: SsrfFilter;
   private laneManager: QueueLaneManager;
 
   constructor(
     circuitBreaker?: RedisCircuitBreaker,
     transport?: WebhookTransportFn,
-    filter?: SssfFilter,
+    filter?: SsrfFilter,
     laneManager?: QueueLaneManager
   ) {
     this.circuitBreaker = circuitBreaker || new RedisCircuitBreaker();
     this.transport = transport || this.defaultTransport.bind(this);
     this.ssrfFilter = filter || ssrfFilter;
+    this.laneManager = laneManager || new QueueLaneManager();
   }
 
   private async defaultTransport(
@@ -66,14 +73,14 @@ export class DispatcherWorker {
     headers: Record<string, string>,
     pinnedTarget?: PinnedWebhookTarget
   ) {
-    const target = pinnedTarget ?? (await this.sssfFilter.validateAndResolve(url));
+    const target = pinnedTarget ?? (await this.ssrfFilter.validateAndResolve(url));
     const connectUrl = target.parsedUrl.protocol === 'http:' ? target.pinnedUrl : url;
     const res = await fetch(connectUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Host: target.hostHeader,
-        'X-Validated-Egress-IP': target.pinnedId,
+        'X-Validated-Egress-IP': target.pinnedIp,
         ...headers,
       },
       body: payload,
@@ -85,11 +92,12 @@ export class DispatcherWorker {
   /**
    * Processes a single webhook dispatch job.
    * 1. Checks circuit breaker state.
-   * 2. Validates target URL and resolves/pins IP via SssfFilter (rejecting private/internal IPs).
+   * 2. Validates target URL and resolves/pins IP via SsrfFilter (rejecting private/internal IPs).
    * 3. Dispatches webhook with pinned IP target.
    */
   public async processJob(job: { data: WebhookDispatchJobData }): Promise<WebhookDispatchResult> {
     const { webhookId, url, payload, headers = {}, paymentId } = job.data;
+    const lane: QueueLane = job.data.lane ?? resolveLaneForAlert(job.data);
 
     // Check circuit breaker state first
     const canSend = await this.circuitBreaker.canExecute(webhookId);
@@ -108,9 +116,9 @@ export class DispatcherWorker {
 
     let pinnedTarget: PinnedWebhookTarget;
     try {
-      pinnedTarget = await this.sssfFilter.validateAndResolve(url);
+      pinnedTarget = await this.ssrfFilter.validateAndResolve(url);
     } catch (err: any) {
-      const statusCode = err instanceof SssfBlockedError ? err.statusCode : 400;
+      const statusCode = err instanceof SsrfBlockedError ? err.statusCode : 400;
       log.error(
         { webhookId, url, reason: err.reason ?? err.message, statusCode, lane },
         '[SECURITY_AUDIT] Blocked webhook dispatch due to SSRF egress policy'
@@ -131,7 +139,7 @@ export class DispatcherWorker {
         url,
         async () => {
           return await this.circuitBreaker.execute(webhookId, async () => {
-            const response = await this.transport(url, payloadStr, headers);
+            const response = await this.transport(url, payloadStr, headers, pinnedTarget);
             if (response.status >= 500) {
               const err: any = new Error(`Server returned HTTP ${response.status}`);
               err.statusCode = response.status;
@@ -148,6 +156,7 @@ export class DispatcherWorker {
         status: 'delivered',
         statusCode: res.status,
         durationMs,
+        pinnedIp: pinnedTarget.pinnedIp,
         lane,
       };
     } catch (err: any) {
@@ -186,7 +195,7 @@ export class DispatcherWorker {
       const worker = new Worker<WebhookDispatchJobData>(
         queueName,
         async (job) => this.processJob(job),
-        { connection: redis, concurrency: config.concurrency }
+        { connection: redis as unknown as ConnectionOptions, concurrency: config.concurrency }
       );
 
       worker.on('failed', (job, error) => {

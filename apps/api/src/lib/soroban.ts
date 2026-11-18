@@ -732,7 +732,7 @@ export async function fetchEventsForContracts(
 
   for (let i = 0; i < unique.length; i += CONTRACTS_PER_EVENT_REQUEST) {
     const batch = unique.slice(i, i + CONTRACTS_PER_EVENT_REQUEST);
-    const filters = [];
+    const filters: Array<{ type: 'contract'; contractIds: string[] }> = [];
     for (let j = 0; j < batch.length; j += CONTRACT_IDS_PER_FILTER) {
       filters.push({ type: "contract", contractIds: batch.slice(j, j + CONTRACT_IDS_PER_FILTER) });
     }

@@ -1,10 +1,13 @@
 import { z } from "zod";
 
 const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).optional().default("development"),
   DATABASE_URL: z.string().url(),
   READ_REPLICA_URL: z.string().url().optional(),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   JWT_SECRET: z.string().min(1),
+  OPSGENIE_API_KEY: z.string().min(1).optional(),
+  PAGERDUTY_ROUTING_KEY: z.string().min(1).optional(),
   // Signs Slack slash-command requests (see modules/slack). Optional so the
   // API stays bootable without the Slack app configured; the /slack/commands
   // route fails closed (503) when it is missing.
@@ -16,6 +19,9 @@ const envSchema = z.object({
   REDIS_SENTINEL_PASSWORD: z.string().optional(),
   REDIS_PASSWORD: z.string().optional(),
   PORT: z.string().optional().default("3001"),
+  APP_URL: z.string().url().optional().default("http://localhost:3000"),
+  ADMIN_USER_IDS: z.string().optional().default(""),
+  ADMIN_EMAILS: z.string().optional().default(""),
   // Comma-separated browser origins allowed to send cookie-authenticated mutations.
   CSRF_ALLOWED_ORIGINS: z.string().optional().default("http://localhost:3000"),
   MASTER_ENCRYPTION_KEY: z
@@ -288,44 +294,16 @@ const envSchema = z.object({
 });
 export type Env = z.infer<typeof envSchema>;
 
-const defaultEnvFallback: Env = {
+const defaultEnvFallback: Env = envSchema.parse({
+  NODE_ENV: "development",
   DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/stellar_alerts",
-  READ_REPLICA_URL: undefined,
   TELEGRAM_BOT_TOKEN: "dummy-telegram-bot-token",
   JWT_SECRET: "dummy-jwt-secret-key-12345",
   REDIS_URL: "redis://localhost:6379",
-  REDIS_SENTINELS: undefined,
-  REDIS_SENTINEL_ADDRESSES: undefined,
-  REDIS_SENTINEL_MASTER_NAME: "mymaster",
-  REDIS_SENTINEL_PASSWORD: undefined,
-  REDIS_PASSWORD: undefined,
   PORT: "3001",
   APP_URL: "http://localhost:3000",
   MASTER_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
-  MASTER_ENCRYPTION_KEY_VERSION: "1",
-  MASTER_ENCRYPTION_OLD_KEYS: "{}",
-  RATE_LIMIT_MAX: 100,
-  SOROBAN_RENT_WORKER_ENABLED: "true",
-  SOROBAN_RENT_WORKER_INTERVAL_MS: "60000",
-  SOROBAN_RENT_WORKER_SECRET: undefined,
-  SOROBAN_RENT_RENEWAL_THRESHOLD: "5000",
-  SOROBAN_RENT_TARGET_TTL: "10000",
-  SOROBAN_RENT_MAX_CONCURRENCY: "5",
-  SOROBAN_INDEXER_WORKER_ENABLED: "true",
-  SOROBAN_INDEXER_INTERVAL_MS: "15000",
-  SOROBAN_INDEXER_BACKFILL_WINDOW: "200",
-  SOROBAN_INDEXER_PAGE_SIZE: "200",
-  SOROBAN_INDEXER_BENCHMARK_INTERVAL_MS: "3600000",
-  SOROBAN_INDEXER_BENCHMARK_DATA_ROWS: "10000",
-  SOROBAN_STAKING_REWARD_WORKER_ENABLED: "true",
-  SOROBAN_SAC_WORKER_ENABLED: "true",
-  WEBHOOK_REPLAY_DRIFT_TOLERANCE_MS: 30000,
-  WEBHOOK_REPLAY_NONCE_TTL_SECONDS: 300,
-  WEBHOOK_BATCH_WINDOW_MS: 5000,
-  WEBHOOK_BATCH_MAX_SIZE: 100,
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318/v1/traces",
-  OTEL_SERVICE_NAME: "stellar-alerts-api",
-};
+});
 
 const parseEnv = (): Env => {
   const envInput = {

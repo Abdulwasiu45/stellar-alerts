@@ -370,6 +370,8 @@ export type WebhookScalarFieldEnum = (typeof WebhookScalarFieldEnum)[keyof typeo
 export const WebhookLogScalarFieldEnum = {
   id: 'id',
   webhookId: 'webhookId',
+  requestUrl: 'requestUrl',
+  requestPayload: 'requestPayload',
   statusCode: 'statusCode',
   responseBody: 'responseBody',
   durationMs: 'durationMs',

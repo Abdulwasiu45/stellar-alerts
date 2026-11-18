@@ -21,18 +21,29 @@ describe('ContractUpgradeRuleEvaluator (#649)', () => {
   }
 
   function makeAlertRule(overrides: any = {}): any {
+    const {
+      id = 'rule1',
+      userId = 'user1',
+      isActive = true,
+      conditions,
+      ...conditionOverrides
+    } = overrides;
+
     return {
-      id: 'rule1',
-      userId: 'user1',
-      isActive: true,
-      conditions: {
-        contractUpgrade: {
-          minSeverity: 'WARNING',
-          adminRemovalIsCritical: true,
-          wasmUpgradeIsCritical: true,
-        },
-        ...overrides,
-      },
+      id,
+      userId,
+      isActive,
+      conditions:
+        conditions !== undefined
+          ? conditions
+          : {
+              contractUpgrade: {
+                minSeverity: 'WARNING',
+                adminRemovalIsCritical: true,
+                wasmUpgradeIsCritical: true,
+              },
+              ...conditionOverrides,
+            },
     };
   }
 

@@ -1,6 +1,4 @@
 import { createLogger } from './logger';
-import { paths } from 'path';
-import { prodict } from './prodict';
 
 const log = createLogger({ module: 'WorkerLifecycle' });
 

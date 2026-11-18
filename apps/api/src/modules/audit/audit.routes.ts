@@ -1,168 +1,93 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { MerkleAuditService } from './merkle.service';
+import { FastifyInstance } from 'fastify';
 import { MerkleProof } from '@stellar-alerts/shared';
+import { authenticateHook } from '../../middleware/auth.middleware';
+import { AuditController, AuditHttpError } from './audit.controller';
 
-const merkleService = new MerkleAuditService();
+const auditController = new AuditController();
 
 /**
- * Audit routes for Merkle tree operations
+ * Audit routes for Merkle tree operations.
+ * All endpoints require authentication and scope database queries to the authenticated user.
  */
 export async function auditRoutes(app: FastifyInstance) {
-  /**
-   * GET /audit/merkle-root/:date
-   * Generate or retrieve Merkle root for a specific date
-   */
+  app.addHook('preHandler', authenticateHook);
+
   app.get<{ Params: { date: string } }>(
     '/audit/merkle-root/:date',
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       try {
-        const { date } = request.params;
-
-        // Validate date format
-        if (!isValidDateFormat(date)) {
-          return reply.status(400).send({
-            success: false,
-            error: 'Invalid date format. Expected YYYY-MM-DD',
-          });
-        }
-
-        const result = await merkleService.generateDailyMerkleRoot(date);
-
-        return reply.status(200).send({
-          success: true,
-          date,
-          root: result.root,
-          treeSize: result.treeSize,
-          timestamp: new Date().toISOString(),
-        });
+        const result = await auditController.getMerkleRoot(
+          request.params.date,
+          request.user?.id,
+        );
+        return reply.status(200).send(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to generate Merkle root';
+        if (error instanceof AuditHttpError) {
+          return reply.status(error.statusCode).send(error.response);
+        }
         return reply.status(500).send({
           success: false,
-          error: message,
+          error: error instanceof Error ? error.message : 'Failed to generate Merkle root',
         });
       }
-    }
+    },
   );
 
-  /**
-   * GET /audit/proof/:alertId/:date
-   * Generate Merkle inclusion proof for a specific alert
-   */
   app.get<{ Params: { alertId: string; date: string } }>(
     '/audit/proof/:alertId/:date',
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       try {
-        const { alertId, date } = request.params;
-
-        if (!isValidDateFormat(date)) {
-          return reply.status(400).send({
-            success: false,
-            error: 'Invalid date format. Expected YYYY-MM-DD',
-          });
-        }
-
-        const proof = await merkleService.generateAlertInclusionProof(alertId, date);
-
-        return reply.status(200).send({
-          success: true,
-          alertId,
-          date,
-          proof,
-          timestamp: new Date().toISOString(),
-        });
+        const result = await auditController.getInclusionProof(
+          request.params.alertId,
+          request.params.date,
+          request.user?.id,
+        );
+        return reply.status(200).send(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to generate inclusion proof';
-        const statusCode = message.includes('not found') ? 404 : 500;
-        return reply.status(statusCode).send({
+        if (error instanceof AuditHttpError) {
+          return reply.status(error.statusCode).send(error.response);
+        }
+        return reply.status(500).send({
           success: false,
-          error: message,
+          error: error instanceof Error ? error.message : 'Failed to generate inclusion proof',
         });
       }
-    }
+    },
   );
 
-  /**
-   * POST /audit/verify
-   * Verify a Merkle inclusion proof against a root hash
-   * Independent verification that does not require database access
-   */
   app.post<{ Body: { alertId: string; proof: MerkleProof; expectedRoot: string } }>(
     '/audit/verify',
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       try {
-        const { alertId, proof, expectedRoot } = request.body;
-
-        if (!alertId || !proof || !expectedRoot) {
-          return reply.status(400).send({
-            success: false,
-            error: 'Missing required fields: alertId, proof, expectedRoot',
-          });
-        }
-
-        const isValid = merkleService.verifyAlertInclusion(alertId, proof, expectedRoot);
-
-        return reply.status(200).send({
-          success: true,
-          alertId,
-          verified: isValid,
-          timestamp: new Date().toISOString(),
-        });
+        const result = await auditController.verifyProof(request.body);
+        return reply.status(200).send(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Verification failed';
+        if (error instanceof AuditHttpError) {
+          return reply.status(error.statusCode).send(error.response);
+        }
         return reply.status(400).send({
           success: false,
-          error: message,
+          error: error instanceof Error ? error.message : 'Verification failed',
         });
       }
-    }
+    },
   );
 
-  /**
-   * POST /audit/commit
-   * Store a Merkle root commitment for audit trail
-   */
   app.post<{ Body: { date: string; root: string; treeSize: number } }>(
     '/audit/commit',
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       try {
-        const { date, root, treeSize } = request.body;
-
-        if (!date || !root || treeSize === undefined) {
-          return reply.status(400).send({
-            success: false,
-            error: 'Missing required fields: date, root, treeSize',
-          });
-        }
-
-        if (!isValidDateFormat(date)) {
-          return reply.status(400).send({
-            success: false,
-            error: 'Invalid date format. Expected YYYY-MM-DD',
-          });
-        }
-
-        const commitment = await merkleService.storeDailyMerkleCommitment(date, root, treeSize);
-
-        return reply.status(200).send({
-          success: true,
-          commitment,
-          timestamp: new Date().toISOString(),
-        });
+        const result = await auditController.commitMerkleRoot(request.body);
+        return reply.status(200).send(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to store commitment';
+        if (error instanceof AuditHttpError) {
+          return reply.status(error.statusCode).send(error.response);
+        }
         return reply.status(400).send({
           success: false,
-          error: message,
+          error: error instanceof Error ? error.message : 'Failed to store commitment',
         });
       }
-    }
+    },
   );
-}
-
-/**
- * Helper: validates date format YYYY-MM-DD
- */
-function isValidDateFormat(dateString: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(dateString) && !isNaN(Date.parse(`${dateString}T00:00:00Z`));
 }
