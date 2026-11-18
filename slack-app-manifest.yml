@@ -1,8 +1,12 @@
-# Slack App manifest for the Stellar Alerts slash commands (issue #452).
+# Slack App manifest for the Stellar Alerts slash commands (issue #452) and
+# interactive alert actions (issue #940).
 #
 # To install: Slack app settings -> "App Manifest" -> paste this file, then
-# replace <your-api-host> with the publicly reachable host of this API and
-# set SLACK_SIGNING_SECRET (shown under "App Credentials") in the API env.
+# replace <your-api-host> with the publicly reachable host of this API,
+# set SLACK_SIGNING_SECRET (shown under "App Credentials") in the API env,
+# and set SLACK_BOT_TOKEN (the "Bot User OAuth Token" shown after
+# installing the app to a workspace) so the snooze modal (views.open) can
+# open.
 display_information:
   name: Stellar Alerts
   description: Track Stellar wallets and receive payment alerts
@@ -21,7 +25,14 @@ oauth_config:
   scopes:
     bot:
       - commands
+      # Required to post payment alerts (chat.postMessage, already used by
+      # slack.provider.ts) and to open the snooze-duration modal
+      # (views.open) after the Snooze button is clicked.
+      - chat:write
 settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://<your-api-host>/slack/interactions
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
