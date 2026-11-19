@@ -8,6 +8,7 @@ import {
   resolveLaneForAlert,
 } from '../lib/queue-lanes';
 import { RedisCircuitBreaker, CircuitBreakerOpenError } from '../modules/alerts/circuit-breaker';
+import { isChatSnoozed } from '../modules/telegram/commands/snooze';
 import { webhookTelemetry } from '../modules/webhooks/webhook-telemetry';
 import {
   ssrfFilter,
@@ -110,6 +111,21 @@ export class DispatcherWorker {
         webhookId,
         status: 'skipped',
         reason: 'circuit_breaker_open',
+        lane,
+      };
+    }
+
+    // Check if destination Telegram chat is currently snoozed (#896)
+    const tgChatId = payload?.telegramChatId || payload?.chat_id || (job.data as any).telegramChatId;
+    if (tgChatId && (await isChatSnoozed(String(tgChatId)))) {
+      log.info(
+        { webhookId, chatId: tgChatId, lane },
+        '[DispatcherWorker] Telegram destination chat is snoozed; skipping delivery',
+      );
+      return {
+        webhookId,
+        status: 'skipped',
+        reason: 'telegram_chat_snoozed',
         lane,
       };
     }
