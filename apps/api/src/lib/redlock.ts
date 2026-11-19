@@ -151,7 +151,7 @@ export class DistributedLockManager {
   private instanceId: string;
   private signalsRegistered = false;
 
-  constructor(client: RedisClientLike = redis as unknown as RedisClientLike) {
+  constructor(client: RedisClientLike = getDefaultRedisClient()) {
     this.redisClient = client;
     this.instanceId = `${process.pid}-${Math.random().toString(36).substring(2, 9)}`;
     this.registerSignalHandlers();
@@ -250,7 +250,7 @@ export class DistributedLockManager {
       await this.releaseAll();
     };
 
-    if (typeof process !== 'undefined' && process.on) {
+    if (typeof process !== 'undefined' && typeof process.on === 'function') {
       process.once('SIGTERM', () => void gracefulRelease('SIGTERM'));
       process.once('SIGINT', () => void gracefulRelease('SIGINT'));
     }

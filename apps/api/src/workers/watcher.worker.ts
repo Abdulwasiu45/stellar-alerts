@@ -937,7 +937,7 @@ export async function processSorobanContractsConcurrently(
 export async function pollOnce() {
   return tracer.startActiveSpan('watcher.pollOnce', async (pollSpan) => {
     try {
-      const wallets = await prisma.wallet.findMany();
+      const wallets = await prisma.wallet.findMany({ where: { deletedAt: null } });
       if (wallets.length === 0) {
         pollSpan.setStatus({ code: SpanStatusCode.OK });
         pollSpan.end();
@@ -1012,7 +1012,7 @@ export async function runWatcher() {
     return watcherLifecycle.runTask(async () => {
       return tracer.startActiveSpan('watcher.poll', async (pollSpan) => {
         try {
-          const wallets = await prisma.wallet.findMany();
+          const wallets = await prisma.wallet.findMany({ where: { deletedAt: null } });
           const activeWalletIds = new Set(wallets.map((wallet) => wallet.id));
           for (const [walletId, close] of walletStreams) {
             if (!activeWalletIds.has(walletId)) {
@@ -1064,23 +1064,7 @@ export async function runWatcher() {
     });
   };
 
-  // Start Horizon SSE streams for live ingestion (#523)
-  const wallets = await prisma.wallet.findMany();
-  const streamClosures: Array<() => void> = [];
-  for (const wallet of wallets) {
-    try {
-      const close = await startHorizonSSEStream(wallet);
-      streamClosures.push(close);
-      watcherLifecycle.registerCleanup(`sse-stream-${wallet.id}`, close);
-    } catch (err: any) {
-      log.error(
-        `[WatcherWorker] Failed to start SSE stream for wallet ${wallet.publicKey}:`,
-        err?.message || err,
-      );
-    }
-  }
-
-  // Also keep a lightweight periodic poll as fallback for catch-up safety
+  // Start initial poll, which opens SSE streams for active wallets and performs catch-up safety.
   await poll();
 
   const pollTimer = setInterval(poll, 30000);
@@ -1220,6 +1204,18 @@ async function processSorobanContractEvents(contractId: string) {
       span.end();
     }
   });
+}
+
+/**
+ * Inspects a Soroban / SAC approval event for excessive or unlimited allowances (#901).
+ */
+export async function inspectSorobanApproval(
+  rawEvent: any,
+  tokenContractId: string,
+) {
+  const parsed = allowanceSentinelService.parseApprovalEvent(rawEvent, tokenContractId);
+  if (!parsed) return null;
+  return allowanceSentinelService.inspectApproval(parsed);
 }
 
 export interface WatcherShutdownResources {

@@ -9,6 +9,18 @@ export interface PushNotificationData {
   receivedAt: string;
 }
 
+export interface PlaintextPushPayloadData {
+  encrypted: false;
+  paymentId: string;
+  txHash: string;
+  amount: string;
+  asset: string;
+  fromAddress: string;
+  receivedAt: string;
+}
+
+export type EncryptedPushPayloadData = EncryptedPushPayload & { encrypted: true };
+
 export interface PushNotificationPayload {
   recipient: string;
   type: number; // 3 = Target Notification in Push Protocol REST API
@@ -19,16 +31,21 @@ export interface PushNotificationPayload {
     body: string;
     cta: string;
     img: string;
-    data: {
-      paymentId: string;
-      txHash: string;
-      amount: string;
-      asset: string;
-      fromAddress: string;
-      receivedAt: string;
-    };
+    /**
+     * The payment's identifying details. Encrypted to the recipient's own
+     * wallet public key (see push-protocol-encryption.ts) whenever the
+     * recipient address is a Stellar Ed25519 key, which only the
+     * recipient's wallet/dApp can decrypt; title/body/cta above stay
+     * plaintext regardless, since EPNS's own push-banner display can't
+     * render an encrypted title. Falls back to a plaintext `data` when the
+     * recipient address isn't a Stellar key (e.g. a user-configured EPNS
+     * channel identifier on another chain), rather than failing dispatch.
+     */
+    data: EncryptedPushPayloadData | PlaintextPushPayloadData;
   };
 }
+
+import { tryEncryptPushPayload, type EncryptedPushPayload } from './push-protocol-encryption';
 
 const STELLAR_EXPERT_TX_URL = 'https://stellar.expert/explorer/testnet/tx';
 const PUSH_PROTOCOL_API_URL = 'https://backend.epns.io/apis/v1/payloads';
@@ -42,10 +59,24 @@ export function buildPushNotificationPayload(data: PushNotificationData): PushNo
   const shortFrom = data.fromAddress
     ? `${data.fromAddress.slice(0, 6)}...${data.fromAddress.slice(-6)}`
     : 'System';
-  
+
   const title = '⚡ Stellar Payment Received';
   const body = `You received ${formattedAmount} from ${shortFrom}`;
   const cta = getPushTxLink(data.txHash);
+
+  const plainData = {
+    paymentId: data.paymentId,
+    txHash: data.txHash,
+    amount: data.amount,
+    asset: data.asset,
+    fromAddress: data.fromAddress,
+    receivedAt: data.receivedAt,
+  };
+
+  const encrypted = tryEncryptPushPayload(JSON.stringify(plainData), data.recipientAddress);
+  const payloadData: EncryptedPushPayloadData | PlaintextPushPayloadData = encrypted
+    ? { ...encrypted, encrypted: true }
+    : { ...plainData, encrypted: false };
 
   return {
     recipient: data.recipientAddress,
@@ -57,14 +88,7 @@ export function buildPushNotificationPayload(data: PushNotificationData): PushNo
       body,
       cta,
       img: 'https://stellar.org/favicon.ico',
-      data: {
-        paymentId: data.paymentId,
-        txHash: data.txHash,
-        amount: data.amount,
-        asset: data.asset,
-        fromAddress: data.fromAddress,
-        receivedAt: data.receivedAt,
-      },
+      data: payloadData,
     },
   };
 }
@@ -78,12 +102,15 @@ export async function dispatchPushNotification(
   pushApiKey?: string,
   options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<boolean> {
-  const payload = buildPushNotificationPayload(data);
   const endpointUrl = process.env.PUSH_PROTOCOL_API_URL || PUSH_PROTOCOL_API_URL;
   const apiKey = pushApiKey || process.env.PUSH_PROTOCOL_API_KEY || 'demo-api-key';
   const timeoutMs = options.timeoutMs ?? env.NOTIFICATION_PROVIDER_TIMEOUT_MS;
 
   try {
+    // Building the payload (including encrypting it to the recipient's key)
+    // happens inside the try block: an unrecognized or malformed recipient
+    // address must fail this one dispatch, not crash the caller.
+    const payload = buildPushNotificationPayload(data);
     const response = await fetchWithTimeout(
       endpointUrl,
       {

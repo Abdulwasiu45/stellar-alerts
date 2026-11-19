@@ -123,9 +123,11 @@ export class HorizonOrderbookPriceAdapter implements HorizonPriceAdapterLike {
       return bestBid ?? bestAsk ?? 0;
     };
 
-    const native = orderbook?.native as
-      | { bids?: any[]; asks?: any[] }
-      | undefined;
+    const native = (
+      orderbook as unknown as {
+        native?: { bids?: Array<{ price: string }>; asks?: Array<{ price: string }> };
+      } | undefined
+    )?.native;
     if (!native) return 0;
 
     // Horizon lists "asks" for the requested pair (SAC -> XLM therefore XLM price)

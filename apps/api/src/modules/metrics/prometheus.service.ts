@@ -14,6 +14,7 @@ export type DeliveryOutcome = 'delivered' | 'failed' | 'skipped';
 /** Histogram bucket boundaries (milliseconds for latency, seconds for lag). */
 const LATENCY_BUCKETS_MS = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
 const LAG_BUCKETS_SECONDS = [1, 5, 10, 30, 60, 300, 600, 1800, 3600];
+const ORACLE_STALENESS_BUCKETS_SECONDS = [10, 30, 60, 120, 300, 600, 900, 1800, 3600];
 
 /**
  * Lightweight histogram tracking for Prometheus metrics.
@@ -104,7 +105,7 @@ class Counter {
       `# TYPE ${this.name} counter`,
     ];
     for (const [labels, value] of this.values) {
-      lines.push(`${this.name}{${labels}} ${value}`);
+      lines.push(labels ? `${this.name}{${labels}} ${value}` : `${this.name} ${value}`);
     }
     return lines;
   }
@@ -135,7 +136,7 @@ class Gauge {
       `# TYPE ${this.name} gauge`,
     ];
     for (const [labels, value] of this.values) {
-      lines.push(`${this.name}{${labels}} ${value}`);
+      lines.push(labels ? `${this.name}{${labels}} ${value}` : `${this.name} ${value}`);
     }
     return lines;
   }
@@ -194,6 +195,25 @@ export class PrometheusMetricsService {
     'Delivery success rate (%) for SLO tracking, grouped by provider (1h window)',
   );
 
+  // Oracle latency / staleness histogram (seconds)
+  private oracleStalenessHistogram = new Histogram(
+    'stellar_alerts_oracle_staleness_seconds',
+    'Staleness of on-chain decentralized oracle feeds in seconds',
+    ORACLE_STALENESS_BUCKETS_SECONDS,
+  );
+
+  // Oracle price divergence gauge (%)
+  private oracleDivergenceGauge = new Gauge(
+    'stellar_alerts_oracle_price_divergence_percent',
+    'Price divergence percentage between on-chain oracle and CEX benchmark',
+  );
+
+  // Oracle checks counter
+  private oracleChecksCounter = new Counter(
+    'stellar_alerts_oracle_checks_total',
+    'Total number of on-chain oracle health checks by oracle provider, asset, and status',
+  );
+
   /**
    * Record ingestion lag (seconds from on-chain ledger to local processing).
    */
@@ -244,6 +264,27 @@ export class PrometheusMetricsService {
   }
 
   /**
+   * Record oracle staleness/latency (seconds since last oracle update).
+   */
+  recordOracleLatency(provider: string, asset: string, latencySeconds: number): void {
+    this.oracleStalenessHistogram.observe(`provider="${provider}",asset="${asset}"`, latencySeconds);
+  }
+
+  /**
+   * Record oracle price divergence percentage relative to CEX benchmark.
+   */
+  recordOracleDivergence(provider: string, asset: string, divergencePercent: number): void {
+    this.oracleDivergenceGauge.set(`provider="${provider}",asset="${asset}"`, divergencePercent);
+  }
+
+  /**
+   * Increment oracle checks counter by status (e.g. 'ok', 'stale', 'divergent', 'error').
+   */
+  incrementOracleChecks(provider: string, asset: string, status: 'ok' | 'stale' | 'divergent' | 'error' | string): void {
+    this.oracleChecksCounter.increment(`provider="${provider}",asset="${asset}",status="${status}"`);
+  }
+
+  /**
    * Render all metrics in Prometheus text exposition format.
    */
   render(): string {
@@ -262,6 +303,12 @@ export class PrometheusMetricsService {
       '',
       this.deliverySloGauge.render().join('\n'),
       '',
+      this.oracleStalenessHistogram.render().join('\n'),
+      '',
+      this.oracleDivergenceGauge.render().join('\n'),
+      '',
+      this.oracleChecksCounter.render().join('\n'),
+      '',
     ].join('\n');
   }
 
@@ -276,6 +323,9 @@ export class PrometheusMetricsService {
     this.queueDepthGauge.reset();
     this.activeWorkersGauge.reset();
     this.deliverySloGauge.reset();
+    this.oracleStalenessHistogram.reset();
+    this.oracleDivergenceGauge.reset();
+    this.oracleChecksCounter.reset();
   }
 }
 

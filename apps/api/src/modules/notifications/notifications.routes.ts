@@ -2,10 +2,33 @@
  * Notifications Routes
  */
 
-import { FastifyInstance } from 'fastify';
+import crypto from 'node:crypto';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { notificationsController } from './notifications.controller';
 import { telegramMiniAppController } from './telegram-miniapp.controller';
 import { authenticateHook } from '../../middleware/auth.middleware';
+
+async function verifyTelegramBotSecretHook(request: FastifyRequest, reply: FastifyReply) {
+  const configuredSecret = process.env.TELEGRAM_BOT_WEBHOOK_SECRET?.trim();
+  if (!configuredSecret) {
+    return;
+  }
+
+  const rawHeader =
+    request.headers['x-telegram-bot-api-secret-token'] ??
+    request.headers['x-telegram-sync-secret'];
+  const providedSecret = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+  const expectedBuf = Buffer.from(configuredSecret, 'utf8');
+  const providedBuf = Buffer.from(typeof providedSecret === 'string' ? providedSecret : '', 'utf8');
+
+  if (
+    expectedBuf.length === 0 ||
+    providedBuf.length !== expectedBuf.length ||
+    !crypto.timingSafeEqual(providedBuf, expectedBuf)
+  ) {
+    return reply.status(401).send({ error: 'Invalid Telegram bot webhook secret' });
+  }
+}
 
 export async function notificationsRoutes(app: FastifyInstance) {
   // Notification Preferences (MFA protected update)
@@ -57,11 +80,16 @@ export async function notificationsRoutes(app: FastifyInstance) {
 
   app.post(
     '/notifications/telegram/confirm-sync',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      preHandler: [verifyTelegramBotSecretHook],
+    },
     notificationsController.confirmTelegramSync.bind(notificationsController)
   );
 
   app.get(
     '/notifications/telegram/sync-status/:code',
+    { preHandler: [authenticateHook] },
     notificationsController.getTelegramSyncStatus.bind(notificationsController)
   );
 

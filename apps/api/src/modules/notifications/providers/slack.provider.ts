@@ -1,15 +1,18 @@
 /**
- * Slack Interactive Block Kit Notification Dispatcher (#637).
+ * Slack Interactive Block Kit Notification Dispatcher (#637, snooze: #940).
  *
  * Implements enterprise Slack notification dispatching using Block Kit:
  * - Structured headers, markdown sections, context elements, and action accessories
- * - Interactive alert acknowledgment button
+ * - Interactive alert acknowledgment and snooze buttons (handled by
+ *   modules/slack-interactions, which verifies and routes button clicks and
+ *   the snooze-duration modal submission back to this alert)
  * - Deep links to Stellar Expert explorer and Stellar Alerts dashboard
  * - Dual delivery transport: Custom Incoming Webhooks and Slack Bot Token (chat.postMessage)
  * - Rate limit handling (429 Retry-After) and timeout management
  */
 
 import { env } from '../../../config/env';
+import { buildSlackSnoozeButton } from '../../../utils/slack-alert-actions';
 import { fetchWithTimeout } from '../../../lib/external-request';
 
 export interface SlackTextObject {
@@ -230,6 +233,7 @@ export class SlackNotificationProvider {
             style: 'primary',
             value: alertId,
           },
+          buildSlackSnoozeButton(alertId),
           {
             type: 'button',
             text: {

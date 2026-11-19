@@ -164,6 +164,41 @@ export class EmailService {
       this.classifyAndThrowError(err);
     }
   }
+
+  /**
+   * Dispatches a pre-rendered HTML/text email (e.g. daily digest reports).
+   */
+  async sendRawEmail(params: {
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+  }): Promise<{ id?: string }> {
+    if (!params.to || !params.to.includes('@')) {
+      throw new PermanentEmailError(`Invalid recipient email address: ${params.to}`);
+    }
+
+    try {
+      const { data, error } = await this.resend.emails.send({
+        from: this.fromAddress,
+        to: [params.to],
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+      });
+
+      if (error) {
+        this.classifyAndThrowError(error);
+      }
+
+      return { id: data?.id };
+    } catch (err: unknown) {
+      if (err instanceof RetriableEmailError || err instanceof PermanentEmailError) {
+        throw err;
+      }
+      this.classifyAndThrowError(err);
+    }
+  }
 }
 
 export const emailService = new EmailService();

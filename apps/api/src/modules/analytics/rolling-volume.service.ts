@@ -1,4 +1,4 @@
-import { RedisClient } from 'ioredis';
+import type RedisClient from 'ioredis';
 
 /**
  * Rolling 24h volume metrics for a wallet, derived from the payment

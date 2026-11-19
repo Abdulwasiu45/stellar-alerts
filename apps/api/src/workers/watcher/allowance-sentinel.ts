@@ -57,7 +57,7 @@ export const defaultAllowanceRiskNotifier: AllowanceRiskNotifier = (assessment) 
 /**
  * Converts a ParsedSorobanApproval to a TokenApproval for the sentinel engine.
  */
-function parsedApprovalToTokenApproval(approval: ParsedSorobanApproval): TokenApproval {
+export function parsedApprovalToTokenApproval(approval: ParsedSorobanApproval): TokenApproval {
   return {
     contractId: approval.contractId,
     from: approval.from,

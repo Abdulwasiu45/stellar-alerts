@@ -1,5 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
+import { AuthorizationError } from '../../lib/errors';
+import { decryptPersonalField, maskPhone, maskTelegramChatId } from '../../utils/privacy';
 import {
   generateMagicToken,
   generateSessionToken,
@@ -211,8 +213,18 @@ export class AuthService {
     }
 
     try {
-      await redis.del(challengeKey);
-    } catch {}
+      const deleted = await redis.del(challengeKey);
+      if (deleted === 0) {
+        throw new Error('DID challenge expired or not requested');
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'DID challenge expired or not requested') {
+        throw err;
+      }
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('DID challenge expired or not requested');
+      }
+    }
 
     const syntheticEmail = `${parsed.address.toLowerCase().substring(0, 20)}@did.stellar-alerts.org`;
 
@@ -310,9 +322,22 @@ export class AuthService {
   }
 
   /**
-   * Explicitly revokes a session family by ID.
+   * Explicitly revokes a session family by ID (enforcing ownership when `ownerUserId` is supplied).
    */
-  async revokeSessionFamily(familyId: string, reason = 'USER_REVOKED_FAMILY'): Promise<void> {
+  async revokeSessionFamily(
+    familyId: string,
+    ownerUserId?: string,
+    reason = 'USER_REVOKED_FAMILY',
+  ): Promise<void> {
+    if (ownerUserId) {
+      const session = await prisma.refreshSession.findUnique({
+        where: { familyId },
+        select: { userId: true },
+      });
+      if (!session || session.userId !== ownerUserId) {
+        throw new AuthorizationError('Cannot revoke a session family you do not own');
+      }
+    }
     await revokeFamily(familyId, reason);
   }
 
@@ -329,7 +354,37 @@ export class AuthService {
       throw new Error('User not found');
     }
 
-    return user;
+    const { mfaSecret: _mfaSecret, ...safeUser } = user as typeof user & {
+      mfaSecret?: unknown;
+    };
+    const activeWallets = Array.isArray(safeUser.wallets)
+      ? safeUser.wallets.filter((w) => !(w as { deletedAt?: Date | null }).deletedAt)
+      : safeUser.wallets;
+
+    const safeNotifyPrefs =
+      safeUser.notifyPrefs && typeof safeUser.notifyPrefs === 'object'
+        ? {
+            ...safeUser.notifyPrefs,
+            telegramChatId: safeUser.notifyPrefs.telegramChatId
+              ? maskTelegramChatId(
+                  decryptPersonalField(safeUser.notifyPrefs.telegramChatId) ??
+                    safeUser.notifyPrefs.telegramChatId,
+                )
+              : safeUser.notifyPrefs.telegramChatId,
+            whatsappNumber: safeUser.notifyPrefs.whatsappNumber
+              ? maskPhone(
+                  decryptPersonalField(safeUser.notifyPrefs.whatsappNumber) ??
+                    safeUser.notifyPrefs.whatsappNumber,
+                )
+              : safeUser.notifyPrefs.whatsappNumber,
+          }
+        : safeUser.notifyPrefs;
+
+    return {
+      ...safeUser,
+      wallets: activeWallets,
+      notifyPrefs: safeNotifyPrefs,
+    };
   }
 }
 

@@ -20,3 +20,15 @@ if (typeof window !== 'undefined' && !window.localStorage) {
 if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function scrollIntoView() {};
 }
+
+// jsdom doesn't always expose navigator.clipboard; provide a mockable stub so
+// clipboard copy tests using vi.spyOn(navigator.clipboard, 'writeText') work.
+if (typeof navigator !== 'undefined' && !navigator.clipboard) {
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      writeText: async () => {},
+      readText: async () => '',
+    },
+  });
+}

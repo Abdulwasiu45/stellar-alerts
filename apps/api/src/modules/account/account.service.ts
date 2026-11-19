@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { generateLedgerStatementCsv } from '../../utils/csv-generator';
+import { decryptPersonalField } from '../../utils/privacy';
 
 /**
  * Account lifecycle service.
@@ -94,7 +95,17 @@ export class AccountService {
           receivedAt: p.receivedAt.toISOString(),
         })),
       })),
-      notificationPreferences: user.notifyPrefs ?? null,
+      notificationPreferences: user.notifyPrefs
+        ? {
+            ...user.notifyPrefs,
+            telegramChatId: user.notifyPrefs.telegramChatId
+              ? decryptPersonalField(user.notifyPrefs.telegramChatId)
+              : null,
+            whatsappNumber: user.notifyPrefs.whatsappNumber
+              ? decryptPersonalField(user.notifyPrefs.whatsappNumber)
+              : null,
+          }
+        : null,
       webhooks: user.webhooks.map((wh) => ({
         id: wh.id,
         url: wh.url,
@@ -151,12 +162,59 @@ export class AccountService {
         where: { userId },
       });
 
-      // 2a. Payments for all the user's wallets.
+      // 2a. Payments (and checksums referencing them) for all the user's wallets.
       const userWallets = await tx.wallet.findMany({
         where: { userId },
         select: { id: true },
       });
       const walletIds = userWallets.map((w) => w.id);
+
+      const txAny = tx as unknown as {
+        paymentChecksum?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        exportJob?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        deadLetter?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        notificationDeliveryAttempt?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        notificationDelivery?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        transactionSimulation?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        apiKey?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        mfaRecoveryCode?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        refreshTokenHistory?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+        refreshSession?: { deleteMany: (args: unknown) => Promise<{ count: number }> };
+      };
+
+      if (walletIds.length > 0 && txAny.paymentChecksum?.deleteMany) {
+        await txAny.paymentChecksum.deleteMany({
+          where: { payment: { walletId: { in: walletIds } } },
+        });
+      }
+
+      if (txAny.notificationDeliveryAttempt?.deleteMany) {
+        await txAny.notificationDeliveryAttempt.deleteMany({ where: { userId } });
+      }
+      if (txAny.notificationDelivery?.deleteMany) {
+        await txAny.notificationDelivery.deleteMany({ where: { userId } });
+      }
+      if (txAny.deadLetter?.deleteMany) {
+        await txAny.deadLetter.deleteMany({ where: { userId } });
+      }
+      if (txAny.exportJob?.deleteMany) {
+        await txAny.exportJob.deleteMany({ where: { userId } });
+      }
+      if (txAny.transactionSimulation?.deleteMany) {
+        await txAny.transactionSimulation.deleteMany({ where: { userId } });
+      }
+      if (txAny.apiKey?.deleteMany) {
+        await txAny.apiKey.deleteMany({ where: { userId } });
+      }
+      if (txAny.mfaRecoveryCode?.deleteMany) {
+        await txAny.mfaRecoveryCode.deleteMany({ where: { userId } });
+      }
+      if (txAny.refreshTokenHistory?.deleteMany) {
+        await txAny.refreshTokenHistory.deleteMany({ where: { userId } });
+      }
+      if (txAny.refreshSession?.deleteMany) {
+        await txAny.refreshSession.deleteMany({ where: { userId } });
+      }
 
       const { count: paymentsDeleted } = await tx.payment.deleteMany({
         where: { walletId: { in: walletIds } },

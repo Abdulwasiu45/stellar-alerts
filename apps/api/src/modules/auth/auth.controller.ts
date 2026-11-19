@@ -29,7 +29,7 @@ const getTrustedPublicKeys = (): string[] => {
     throw new Error('TSS_VERIFICATION_KEYS is not configured');
   }
   const keys = JSON.parse(raw);
-  if (!Array.isArray(keys) || keys.length <3 ) {
+  if (!Array.isArray(keys) || keys.length < 3) {
     throw new Error('TSS_VERIFICATION_KEYS must be an array of 3 public keys');
   }
   return keys.map((key) => String(key));
@@ -226,7 +226,7 @@ export class AuthController {
     const targetFamilyId = (parsed.success && parsed.data.familyId) || request.user.familyId;
 
     if (targetFamilyId && targetFamilyId !== 'legacy') {
-      await authService.revokeSessionFamily(targetFamilyId);
+      await authService.revokeSessionFamily(targetFamilyId, request.user.id);
     }
     await authService.revokeSession(request.user);
     return reply.send({

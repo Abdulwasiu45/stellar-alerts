@@ -7,8 +7,8 @@ export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 
 export interface CircuitBreakerOptions {
   failureThreshold?: number; // default: 5
-  windowSeconds?: number;     // default: 60
-  cooldownSeconds?: number;   // default: 60
+  windowSeconds?: number;     // default: 300 (5 minutes, #941)
+  cooldownSeconds?: number;   // default: 900 (15 minutes, #941)
 }
 
 export interface CircuitBreakerSnapshot {
@@ -32,9 +32,13 @@ export class RedisCircuitBreaker {
   private cooldownSeconds: number;
 
   constructor(options: CircuitBreakerOptions = {}) {
+    // Defaults match #941's acceptance criteria exactly: 5 consecutive
+    // failures within a 5-minute window trips the circuit; a tripped
+    // circuit stays OPEN for a 15-minute cooldown before allowing a single
+    // HALF_OPEN canary probe (see getState's auto-transition below).
     this.failureThreshold = options.failureThreshold ?? 5;
-    this.windowSeconds = options.windowSeconds ?? 60;
-    this.cooldownSeconds = options.cooldownSeconds ?? 60;
+    this.windowSeconds = options.windowSeconds ?? 300;
+    this.cooldownSeconds = options.cooldownSeconds ?? 900;
   }
 
   private stateKey(endpointId: string): string {

@@ -10,6 +10,8 @@ import { registerProfileCommands } from './commands/profile.js';
 import { registerCompletionCommands } from './commands/completion.js';
 import { registerMultisigCommands } from './commands/multisig.js';
 import { registerVerifyProofCommand } from './commands/verify-proof.js';
+import { registerTopCommand } from './commands/top.js';
+import { registerValidateCommand } from './commands/validate.js';
 import StreamTui from './tui/stream-tui.js';
 
 const program = new Command();
@@ -31,6 +33,8 @@ registerProfileCommands(program);
 registerCompletionCommands(program);
 registerMultisigCommands(program);
 registerVerifyProofCommand(program);
+registerTopCommand(program);
+registerValidateCommand(program);
 
 // Health check command
 program

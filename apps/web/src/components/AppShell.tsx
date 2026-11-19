@@ -15,6 +15,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', match: '/dashboard' },
+  { href: '/dashboard/rules/new', label: 'Rule Builder', match: '/dashboard/rules' },
+  { href: '/dashboard/triage/INC-84920', label: 'Incident Triage', match: '/dashboard/triage' },
   { href: '/inspectors', label: 'Inspectors', match: '/inspectors' },
   { href: '/soroban', label: 'Soroban Inspector', match: '/soroban' },
   { href: '/onboarding', label: 'Onboarding', match: '/onboarding' },

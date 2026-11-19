@@ -63,6 +63,10 @@ export class ContractUpgradeSentinelEngine {
     previousState: ContractState | null,
     currentState: ContractState,
   ): ContractUpgradeAlert | null {
+    if (!previousState) {
+      return null;
+    }
+
     const contractId = currentState.contractId;
     const ledgerSeq = currentState.ledgerSeq;
 
