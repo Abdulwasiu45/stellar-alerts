@@ -38,6 +38,7 @@
     "check:secrets": "node tools/check-secrets.mjs",
     "check:secrets:staged": "node scripts/scan-staged-secrets.mjs",
     "test:contributor-checks": "node --test tools/check-env-examples.test.mjs tools/check-secrets.test.mjs",
+    "collections:export": "tsx scripts/export-collections.ts",
     "openapi:check:breaking": "tsx scripts/check-openapi-breaking-changes.ts",
     "benchmark:stream": "tsx scripts/benchmark-stream.ts",
     "security:audit": "osv-scanner scan source -r . --config osv-scanner.toml",
