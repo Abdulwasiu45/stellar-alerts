@@ -6,6 +6,7 @@ import {
   EmailTemplatePreview,
   type EmailTemplateConfig,
 } from '@/components/dashboard';
+import { AudioAlertStudio } from '@/components/settings/AudioAlertStudio';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
 
@@ -132,6 +133,9 @@ export default function SettingsPage() {
           <EmailTemplatePreview onSaveTemplate={handleSaveEmailTemplate} />
         </div>
       </div>
+
+      {/* Audio-Visual Alert Notification Studio */}
+      <AudioAlertStudio />
     </div>
   );
 }
