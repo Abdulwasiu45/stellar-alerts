@@ -51,6 +51,8 @@ services:
     ports:
       - "8474:8474"
       - "8666:8666"
+      # Redis fault-injection proxy (#945) — proxies the redis service above.
+      - "8667:8667"
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

@@ -282,9 +282,12 @@ jobs:
       # docker-compose.yml port-maps toxiproxy and points it at the host via
       # host.docker.internal (an extra_hosts host-gateway entry), since the
       # chaos suite's fixture server binds to localhost on the runner, not
-      # inside the toxiproxy container.
-      - name: Start Toxiproxy
-        run: docker compose up -d toxiproxy
+      # inside the toxiproxy container. redis is also brought up here (#945)
+      # so the Redis fault-injection tests have a real instance to proxy;
+      # it's reachable the same way, via host.docker.internal, since its
+      # port is published to the runner's localhost.
+      - name: Start Toxiproxy and Redis
+        run: docker compose up -d toxiproxy redis
 
       - name: Wait for Toxiproxy to be ready
         run: |
@@ -299,13 +302,27 @@ jobs:
           docker compose logs toxiproxy
           exit 1
 
+      - name: Wait for Redis to be ready
+        run: |
+          for i in $(seq 1 1 30); do
+            if docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "Redis is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Redis did not become ready in time" >&2
+          docker compose logs redis
+          exit 1
+
       - name: Run Chaos Test Suite
         working-directory: apps/api
         run: npx vitest run src/__tests__/chaos.test.ts
         env:
           TOXIPROXY_URL: http://localhost:8474
           TOXIPROXY_UPSTREAM_HOST: host.docker.internal
+          TOXIPROXY_REDIS_UPSTREAM_HOST: host.docker.internal
 
-      - name: Stop Toxiproxy
+      - name: Stop Toxiproxy and Redis
         if: always()
-        run: docker compose down toxiproxy || true
+        run: docker compose down toxiproxy redis || true
