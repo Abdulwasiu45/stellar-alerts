@@ -21,8 +21,7 @@ import { MemoryMonitor, MemorySnapshot } from '../utils/memory-monitor';
 import { appendPaymentChecksum } from '../services/checksumChain.service';
 import { createLogger } from '../lib/logger';
 import { outboxService } from '../modules/outbox/outbox.service';
-import { revertAnalyzer } from '../modules/soroban/revert-analyzer';
-import { reentrancySentinel } from '../modules/soroban/reentrancy-sentinel';
+import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
 import { WorkerLifecycleManager } from '../lib/worker-lifecycle';
 import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
@@ -1193,33 +1192,15 @@ async function processSorobanContractEvents(contractId: string) {
 }
 
 /**
- * Analyzes failed Soroban transactions from transaction metadata XDR,
- * decoding error codes and diagnostic call trees into structured alerts.
+ * Inspects a Soroban / SAC approval event for excessive or unlimited allowances (#901).
  */
-export async function processFailedSorobanTransaction(
-  txHash: string,
-  metaXdrOrObj: any,
+export async function inspectSorobanApproval(
+  rawEvent: any,
+  tokenContractId: string,
 ) {
-  const analysis = revertAnalyzer.analyzeTransactionMeta(metaXdrOrObj, txHash);
-  if (analysis) {
-    await revertAnalyzer.publishRevertAlert(analysis);
-  }
-  return analysis;
-}
-
-/**
- * Traverses Soroban transaction invocation trees to detect and alert on
- * re-entrant calls across external contract branches.
- */
-export async function inspectSorobanTransactionForReentrancy(
-  txHash: string,
-  envelopeOrInvocations: any,
-) {
-  const report = reentrancySentinel.analyzeTransactionEnvelope(envelopeOrInvocations, txHash);
-  if (report.hasReentrancy) {
-    await reentrancySentinel.publishReentrancyAlert(report);
-  }
-  return report;
+  const parsed = allowanceSentinelService.parseApprovalEvent(rawEvent, tokenContractId);
+  if (!parsed) return null;
+  return allowanceSentinelService.inspectApproval(parsed);
 }
 
 export interface WatcherShutdownResources {
