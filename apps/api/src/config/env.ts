@@ -10,8 +10,12 @@ const envSchema = z.object({
   PAGERDUTY_ROUTING_KEY: z.string().min(1).optional(),
   // Signs Slack slash-command requests (see modules/slack). Optional so the
   // API stays bootable without the Slack app configured; the /slack/commands
-  // route fails closed (503) when it is missing.
+  // and /slack/interactions routes fail closed (503) when it is missing.
   SLACK_SIGNING_SECRET: z.string().min(1).optional(),
+  // Required to open the snooze-duration modal (views.open, #940). Without
+  // it, the Snooze button's click is still verified and recorded, but the
+  // modal silently cannot be shown.
+  SLACK_BOT_TOKEN: z.string().min(1).optional(),
   REDIS_URL: z.string().url(),
   REDIS_SENTINELS: z.string().optional(),
   REDIS_SENTINEL_ADDRESSES: z.string().optional(),
