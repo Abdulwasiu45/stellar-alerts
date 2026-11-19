@@ -64,6 +64,19 @@ Delivery is **at-least-once**. The CLI never advances the cursor past a payment 
 
 Checks API reachability.
 
+### `validate <key>`
+
+Checks a Stellar address offline (no API call): StrKey encoding, checksum and
+type. Accepts accounts (`G...`), contracts (`C...`), muxed accounts (`M...`)
+and pre-authorized transactions (`T...`). A valid key prints its type and hex
+payload (plus the base account and mux id for `M...`) and exits `0`. An invalid
+one prints the reason (unknown prefix, wrong length, bad characters or checksum
+mismatch) and exits `1`. Secret seeds (`S...`) are rejected and never printed.
+
+```bash
+stellar-alerts-cli validate GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ
+```
+
 ### `verify-ledger`
 
 Audits locally cached payment records against Horizon and emits a
