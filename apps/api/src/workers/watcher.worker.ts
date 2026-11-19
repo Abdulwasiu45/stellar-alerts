@@ -21,6 +21,7 @@ import { MemoryMonitor, MemorySnapshot } from '../utils/memory-monitor';
 import { appendPaymentChecksum } from '../services/checksumChain.service';
 import { createLogger } from '../lib/logger';
 import { outboxService } from '../modules/outbox/outbox.service';
+import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
 import { WorkerLifecycleManager } from '../lib/worker-lifecycle';
 import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
@@ -1188,6 +1189,18 @@ async function processSorobanContractEvents(contractId: string) {
       span.end();
     }
   });
+}
+
+/**
+ * Inspects a Soroban / SAC approval event for excessive or unlimited allowances (#901).
+ */
+export async function inspectSorobanApproval(
+  rawEvent: any,
+  tokenContractId: string,
+) {
+  const parsed = allowanceSentinelService.parseApprovalEvent(rawEvent, tokenContractId);
+  if (!parsed) return null;
+  return allowanceSentinelService.inspectApproval(parsed);
 }
 
 export interface WatcherShutdownResources {

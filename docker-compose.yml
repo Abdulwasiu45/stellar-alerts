@@ -13,9 +13,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres -d stellar_alerts" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
 
   redis:
     image: redis:7-alpine
@@ -25,9 +26,10 @@ services:
       - "6379:6379"
     healthcheck:
       test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
 
   # Chaos-engineering fault injection proxy (#145). The API test suite spins
   # up its own local fixture server on an ephemeral port and talks to it
@@ -48,6 +50,9 @@ services:
     image: ghcr.io/shopify/toxiproxy:latest
     container_name: stellar_alerts_toxiproxy
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     ports:
       - "8474:8474"
       - "8666:8666"

@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import { fetchWithTimeout } from '../lib/external-request';
+import { isChatSnoozed } from '../modules/telegram/commands/snooze';
 
 export interface TelegramAlertData {
   amount: string;
@@ -49,6 +50,11 @@ export async function dispatchTelegramAlert(
 ): Promise<boolean> {
   const targetChatId = typeof chatId === 'string' ? chatId.trim() : '';
   if (!targetChatId || !botToken) {
+    return false;
+  }
+
+  // Check if user has snoozed or silenced notifications (#896)
+  if (await isChatSnoozed(targetChatId)) {
     return false;
   }
 
