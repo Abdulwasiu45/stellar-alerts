@@ -1,32 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Test, TestingModule } from '@nestjs/testing';
-import { AuditController } from './audit.controller';
+import { AuditController, AuditHttpError } from './audit.controller';
 import { MerkleAuditService } from './merkle.service';
-import { HttpException } from '@nestjs/common';
 import { MerkleProof } from '@stellar-alerts/shared';
 
 describe('AuditController', () => {
   let controller: AuditController;
   let service: MerkleAuditService;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [AuditController],
-      providers: [
-        {
-          provide: MerkleAuditService,
-          useValue: {
-            generateDailyMerkleRoot: vi.fn(),
-            generateAlertInclusionProof: vi.fn(),
-            verifyAlertInclusion: vi.fn(),
-            storeDailyMerkleCommitment: vi.fn(),
-          },
-        },
-      ],
-    }).compile();
+  beforeEach(() => {
+    service = {
+      generateDailyMerkleRoot: vi.fn(),
+      generateAlertInclusionProof: vi.fn(),
+      verifyAlertInclusion: vi.fn(),
+      storeDailyMerkleCommitment: vi.fn(),
+    } as unknown as MerkleAuditService;
 
-    controller = module.get<AuditController>(AuditController);
-    service = module.get<MerkleAuditService>(MerkleAuditService);
+    controller = new AuditController(service);
   });
 
   describe('GET /audit/merkle-root/:date', () => {
@@ -48,7 +37,7 @@ describe('AuditController', () => {
     });
 
     it('throws error for invalid date format', async () => {
-      await expect(controller.getMerkleRoot('invalid-date')).rejects.toThrow(HttpException);
+      await expect(controller.getMerkleRoot('invalid-date')).rejects.toThrow(AuditHttpError);
     });
 
     it('throws error when service fails', async () => {
@@ -56,7 +45,7 @@ describe('AuditController', () => {
         new Error('No delivered alerts found')
       );
 
-      await expect(controller.getMerkleRoot('2026-08-30')).rejects.toThrow(HttpException);
+      await expect(controller.getMerkleRoot('2026-08-30')).rejects.toThrow(AuditHttpError);
     });
   });
 
@@ -92,13 +81,13 @@ describe('AuditController', () => {
         await controller.getInclusionProof('alert-123', '2026-08-30');
         expect.fail('Should have thrown');
       } catch (error) {
-        expect(error).toBeInstanceOf(HttpException);
+        expect(error).toBeInstanceOf(AuditHttpError);
       }
     });
 
     it('throws error for invalid date format', async () => {
       await expect(controller.getInclusionProof('alert-123', 'bad-date')).rejects.toThrow(
-        HttpException
+        AuditHttpError
       );
     });
   });
@@ -150,7 +139,7 @@ describe('AuditController', () => {
           proof: { leafHash: '', path: [] },
           expectedRoot: '',
         })
-      ).rejects.toThrow(HttpException);
+      ).rejects.toThrow(AuditHttpError);
     });
   });
 
@@ -182,7 +171,7 @@ describe('AuditController', () => {
           root: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           treeSize: 5,
         })
-      ).rejects.toThrow(HttpException);
+      ).rejects.toThrow(AuditHttpError);
     });
 
     it('throws error when fields are missing', async () => {
@@ -192,7 +181,7 @@ describe('AuditController', () => {
           root: '',
           treeSize: 0,
         })
-      ).rejects.toThrow(HttpException);
+      ).rejects.toThrow(AuditHttpError);
     });
   });
 
@@ -220,7 +209,7 @@ describe('AuditController', () => {
       ];
 
       for (const date of invalidDates) {
-        await expect(controller.getMerkleRoot(date)).rejects.toThrow(HttpException);
+        await expect(controller.getMerkleRoot(date)).rejects.toThrow(AuditHttpError);
       }
     });
   });

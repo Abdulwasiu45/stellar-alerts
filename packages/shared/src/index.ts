@@ -7,6 +7,7 @@ import { isValidEd25519PublicKey } from './strkey';
 export type { components as ApiComponents, paths as ApiPaths } from './generated/api-types';
 export * from './config/index';
 export * from './merkle';
+export * from './soroban/scval-parser';
 // Single source of truth for Stellar StrKey / transaction-hash validation
 // (Ed25519 public keys, contract IDs, muxed addresses, transaction hashes).
 export * from './strkey';
@@ -56,6 +57,26 @@ export interface DeliveryEventDTO {
   sentAt: Date | string;
 }
 
+/**
+ * Merchant-customizable branding variables for payment receipt emails (#572).
+ *
+ * Only the branding subset is persisted — the sample transaction values shown
+ * in the live preview (`amount`, `asset`, `fromAddress`, `txHash`) are demo
+ * data and are never stored on the user preference row.
+ */
+export interface EmailTemplateDTO {
+  /** Brand / merchant name shown in the receipt header. */
+  brandName: string;
+  /** Absolute URL to the brand logo. Empty string falls back to a monogram. */
+  logoUrl: string;
+  /** Primary brand color used for headers, buttons and accents (`#rrggbb`). */
+  primaryColor: string;
+  /** Secondary accent color used for highlighted details (`#rrggbb`). */
+  accentColor: string;
+  /** Small print rendered in the email footer. */
+  footerText: string;
+}
+
 export interface NotificationPreferenceDTO {
   id: string;
   userId: string;
@@ -64,6 +85,8 @@ export interface NotificationPreferenceDTO {
   emailEnabled: boolean;
   whatsappNumber?: string | null;
   whatsappEnabled: boolean;
+  /** Customized receipt branding saved from the email template builder. */
+  emailTemplate?: EmailTemplateDTO | null;
 }
 
 /**

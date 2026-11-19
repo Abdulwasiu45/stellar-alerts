@@ -57,6 +57,14 @@ vi.mock('../../lib/lock', () => ({
   withWalletLock: vi.fn(async (_walletId: string, fn: () => Promise<any>) => fn()),
 }));
 
+vi.mock('../../lib/redlock', () => ({
+  distributedLockManager: {
+    acquireWalletLock: vi.fn().mockResolvedValue({ key: 'lock:test', value: 'token' }),
+    releaseWalletLock: vi.fn().mockResolvedValue(undefined),
+    releaseAll: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 vi.mock('../../lib/realtime', () => ({
   publishPaymentEvent: vi.fn().mockResolvedValue(undefined),
   publishDeliveryEvent: vi.fn().mockResolvedValue(undefined),
@@ -371,7 +379,11 @@ describe('Horizon SSE stream lifecycle', () => {
   it('automatically reconnects after a network drop', async () => {
     const { connector, connections } = makeConnector();
 
-    const close = await startHorizonSSEStream(wallet, { connector, reconnectDelayMs: 10 });
+    const close = await startHorizonSSEStream(wallet, {
+      connector,
+      reconnectDelayMs: 10,
+      reconnectRandom: () => 1,
+    });
     expect(connections).toHaveLength(1);
 
     // Simulate the underlying EventSource dropping.
@@ -380,7 +392,9 @@ describe('Horizon SSE stream lifecycle', () => {
     // The broken connection is torn down immediately...
     expect(connections[0].close).toHaveBeenCalledTimes(1);
 
-    // ...and a fresh stream is opened after the backoff delay.
+    // ...and a fresh stream is opened after the backoff delay. With
+    // reconnectRandom pinned to 1 the Full Jitter delay equals the old
+    // uncapped exponential value, so the existing timing assertion holds.
     await vi.advanceTimersByTimeAsync(10);
     expect(connections).toHaveLength(2);
 
@@ -394,6 +408,7 @@ describe('Horizon SSE stream lifecycle', () => {
       connector,
       reconnectDelayMs: 10,
       maxReconnectAttempts: 2,
+      reconnectRandom: () => 1,
     });
     expect(connections).toHaveLength(1);
 
@@ -412,7 +427,11 @@ describe('Horizon SSE stream lifecycle', () => {
   it('close() cancels any pending reconnect', async () => {
     const { connector, connections } = makeConnector();
 
-    const close = await startHorizonSSEStream(wallet, { connector, reconnectDelayMs: 10 });
+    const close = await startHorizonSSEStream(wallet, {
+      connector,
+      reconnectDelayMs: 10,
+      reconnectRandom: () => 1,
+    });
     connections[0].handlers.onerror(new Error('drop'));
     close();
 
@@ -439,6 +458,7 @@ describe('Horizon SSE stream lifecycle', () => {
       connector,
       reconnectDelayMs: 10,
       maxReconnectDelayMs: 1000,
+      reconnectRandom: () => 1,
     });
     expect(connections).toHaveLength(1);
 
@@ -466,6 +486,7 @@ describe('Horizon SSE stream lifecycle', () => {
       connector,
       reconnectDelayMs: 10,
       maxReconnectDelayMs: 15,
+      reconnectRandom: () => 1,
     });
 
     // 1st drop: 10ms. 2nd drop would be 20ms uncapped, but is capped to 15ms.
@@ -488,6 +509,7 @@ describe('Horizon SSE stream lifecycle', () => {
       connector,
       reconnectDelayMs: 10,
       heartbeatTimeoutMs: 30000,
+      reconnectRandom: () => 1,
     });
 
     expect(connections).toHaveLength(1);

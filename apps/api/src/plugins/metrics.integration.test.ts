@@ -97,7 +97,7 @@ describe('Metrics Plugin - /metrics Endpoint Integration', () => {
       const body = response.body;
 
       expect(body).toContain('stellar_alerts_queue_depth_jobs');
-      expect(body).toContain('queue="notifications" 42');
+      expect(body).toContain('queue="notifications"} 42');
     });
 
     it('should include active workers gauge', async () => {
@@ -178,7 +178,7 @@ describe('Metrics Plugin - /metrics Endpoint Integration', () => {
         url: '/metrics',
       });
 
-      expect(response1.body).toContain('queue="notifications" 10');
+      expect(response1.body).toContain('queue="notifications"} 10');
 
       prometheusMetricsService.setQueueDepth(20, 'notifications');
 
@@ -187,7 +187,7 @@ describe('Metrics Plugin - /metrics Endpoint Integration', () => {
         url: '/metrics',
       });
 
-      expect(response2.body).toContain('queue="notifications" 20');
+      expect(response2.body).toContain('queue="notifications"} 20');
     });
 
     it('should have valid Prometheus exposition format', async () => {

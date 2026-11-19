@@ -104,7 +104,7 @@ class Counter {
       `# TYPE ${this.name} counter`,
     ];
     for (const [labels, value] of this.values) {
-      lines.push(`${this.name}{${labels}} ${value}`);
+      lines.push(labels ? `${this.name}{${labels}} ${value}` : `${this.name} ${value}`);
     }
     return lines;
   }
@@ -135,7 +135,7 @@ class Gauge {
       `# TYPE ${this.name} gauge`,
     ];
     for (const [labels, value] of this.values) {
-      lines.push(`${this.name}{${labels}} ${value}`);
+      lines.push(labels ? `${this.name}{${labels}} ${value}` : `${this.name} ${value}`);
     }
     return lines;
   }

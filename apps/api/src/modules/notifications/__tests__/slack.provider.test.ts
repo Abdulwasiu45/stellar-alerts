@@ -73,7 +73,7 @@ describe('SlackNotificationProvider (#637)', () => {
       const actions = payload.blocks[3];
       expect(actions.type).toBe('actions');
       if (actions.type === 'actions') {
-        expect(actions.elements).toHaveLength(3);
+        expect(actions.elements).toHaveLength(4);
 
         // 1. Acknowledge button
         const ackBtn = actions.elements[0];
@@ -83,16 +83,22 @@ describe('SlackNotificationProvider (#637)', () => {
         expect(ackBtn.value).toBe('alert-abc-987');
         expect(ackBtn.text.text).toContain('Acknowledge Alert');
 
-        // 2. Stellar Expert button
-        const explorerBtn = actions.elements[1];
+        // 2. Snooze button (#940)
+        const snoozeBtn = actions.elements[1];
+        expect(snoozeBtn.type).toBe('button');
+        expect(snoozeBtn.action_id).toBe('snooze_alert');
+        expect(snoozeBtn.value).toBe('alert-abc-987');
+
+        // 3. Stellar Expert button
+        const explorerBtn = actions.elements[2];
         expect(explorerBtn.type).toBe('button');
         expect(explorerBtn.action_id).toBe('view_stellar_expert');
         expect(explorerBtn.url).toBe(
           `https://stellar.expert/explorer/public/tx/${sampleAlertData.txHash}`,
         );
 
-        // 3. Dashboard button
-        const dashBtn = actions.elements[2];
+        // 4. Dashboard button
+        const dashBtn = actions.elements[3];
         expect(dashBtn.type).toBe('button');
         expect(dashBtn.action_id).toBe('open_dashboard');
         expect(dashBtn.url).toBe('https://app.stellaralerts.io/alerts/alert-abc-987');

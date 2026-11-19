@@ -180,3 +180,80 @@ export function stopLagMonitor(): void {
     monitorInterval = null;
   }
 }
+
+export interface TableHealthMetric {
+  tableName: string;
+  liveTuples: number;
+  deadTuples: number;
+  deadTupleRatio: number;
+}
+
+export interface DbHealthReport {
+  checkedAt: string;
+  readOnly: boolean;
+  cacheHitRatio: number;
+  totalDeadTuples: number;
+  tables: TableHealthMetric[];
+  recommendations: string[];
+}
+
+/**
+ * Generates read-only PostgreSQL bloat, dead-tuple, and buffer cache diagnostics (#763).
+ */
+export class DbHealthService {
+  constructor(private readonly readOnly: boolean = true) {}
+
+  async generateReport(): Promise<DbHealthReport> {
+    const client = this.readOnly ? replicaPrisma : prisma;
+
+    const tableRows = await client.$queryRaw<
+      Array<{ relname: string; n_live_tup: bigint | number; n_dead_tup: bigint | number }>
+    >`
+      SELECT relname, n_live_tup, n_dead_tup
+      FROM pg_stat_user_tables
+      ORDER BY n_dead_tup DESC
+      LIMIT 25
+    `;
+
+    const cacheRows = await client.$queryRaw<Array<{ ratio: number | string | null }>>`
+      SELECT CASE
+        WHEN COALESCE(SUM(heap_blks_hit) + SUM(heap_blks_read), 0) = 0 THEN 100
+        ELSE ROUND((SUM(heap_blks_hit)::numeric * 100) / (SUM(heap_blks_hit) + SUM(heap_blks_read)), 2)
+      END AS ratio
+      FROM pg_statio_user_tables
+    `;
+
+    let totalDeadTuples = 0;
+    const recommendations: string[] = [];
+    const tables: TableHealthMetric[] = tableRows.map((row) => {
+      const liveTuples = Number(row.n_live_tup ?? 0);
+      const deadTuples = Number(row.n_dead_tup ?? 0);
+      totalDeadTuples += deadTuples;
+      const denom = liveTuples + deadTuples;
+      const deadTupleRatio = denom > 0 ? Number((deadTuples / denom).toFixed(4)) : 0;
+      if (deadTuples >= 10_000 && deadTupleRatio >= 0.2) {
+        recommendations.push(`Consider VACUUM ANALYZE on "${row.relname}" (${deadTuples} dead tuples).`);
+      }
+      return {
+        tableName: row.relname,
+        liveTuples,
+        deadTuples,
+        deadTupleRatio,
+      };
+    });
+
+    const cacheHitRatio = Number(cacheRows[0]?.ratio ?? 100);
+    if (cacheHitRatio < 95) {
+      recommendations.push(`Buffer cache hit ratio is ${cacheHitRatio}% (<95%); consider increasing shared_buffers.`);
+    }
+
+    return {
+      checkedAt: new Date().toISOString(),
+      readOnly: this.readOnly,
+      cacheHitRatio,
+      totalDeadTuples,
+      tables,
+      recommendations,
+    };
+  }
+}

@@ -12,7 +12,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.integration.test.ts'],
+    include: process.env.VITEST_INCLUDE
+      ? [process.env.VITEST_INCLUDE]
+      : (process.env.npm_lifecycle_event === 'test:integration'
+          ? ['src/**/*.integration.test.ts']
+          : ['src/**/*.test.ts']),
     // Safe dummy values so suites that import modules which validate env at
     // import time (e.g. config/env.ts via lib/prisma) don't process.exit(1).
     env: {

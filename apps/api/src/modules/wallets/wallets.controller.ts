@@ -1,4 +1,5 @@
-import { bulkImportService, parseCsvWallets, BulkImportItem } from './bulk-import.service';\nimport { FastifyRequest, FastifyReply } from 'fastify';
+import { bulkImportService, parseCsvWallets, BulkImportItem } from './bulk-import.service';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import type { WalletDTO } from '@stellar-alerts/shared';
 import {
   createWalletSchema,
@@ -9,7 +10,7 @@ import {
 } from './wallets.schema';
 import { walletsService } from './wallets.service';
 import { CursorError } from '../../utils/pagination';
-import { ConflictError, NotFoundError, ValidationError, zodValidationError } from '../../lib/errors';
+import { AuthenticationError, ConflictError, NotFoundError, ValidationError, zodValidationError } from '../../lib/errors';
 
 export class WalletsController {
   async addWallet(request: FastifyRequest, reply: FastifyReply) {
@@ -147,7 +148,10 @@ export class WalletsController {
   }
 
   async bulkImport(request: FastifyRequest, reply: FastifyReply) {
-    const userId = (request as any).user?.id || 'anonymous';
+    const userId = request.user?.id;
+    if (!userId) {
+      throw new AuthenticationError('User not authenticated');
+    }
     const body = request.body as any;
     let items: BulkImportItem[] = [];
 
@@ -171,6 +175,6 @@ export class WalletsController {
     const result = await bulkImportService.importWallets(userId, items);
     return reply.status(200).send({ success: true, ...result });
   }
-\n}
+}
 
 export const walletsController = new WalletsController();

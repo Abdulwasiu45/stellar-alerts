@@ -11,8 +11,8 @@ import {
   parseAlertCustomId,
   type DiscordActionRow,
 } from '../../utils/discord';
+import { sharedAlertActionStore } from '../../lib/alert-action-store';
 import {
-  InMemoryDiscordAlertActionStore,
   type DiscordAlertActionState,
   type DiscordAlertActionStore,
 } from './discord-interactions.actionStore';
@@ -45,7 +45,7 @@ export class DiscordInteractionsService {
 
   constructor(options: DiscordInteractionsServiceOptions = {}) {
     this.now = options.now ?? (() => new Date());
-    this.store = options.store ?? new InMemoryDiscordAlertActionStore(this.now);
+    this.store = options.store ?? sharedAlertActionStore;
     this.allowedSnoozeDurations = options.allowedSnoozeDurations;
   }
 

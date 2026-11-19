@@ -34,6 +34,11 @@ import {
   emptyVaultPayload,
 } from './vault.js';
 
+// NOTE: ConfigValidator (packages/cli/src/lib/config-validator.ts) is expected to
+// provide schema validation of profiles.json against config.schema.json. Its
+// integration point is readProfilesFile below.
+import { validateProfilesFile } from './config-validator.js';
+
 // ---------------------------------------------------------------------------
 // Configuration directory resolution
 // ---------------------------------------------------------------------------
@@ -67,7 +72,7 @@ function readProfilesFile(configDir: string): ProfilesFile {
   const filePath = getProfilesFilePath(configDir);
 
   if (!existsSync(filePath)) {
-    return ConfigValidator.createDefaultTemplate();
+    return { version: 1, activeProfile: null, profiles: {} };
   }
 
   let raw: string;
@@ -90,7 +95,21 @@ function readProfilesFile(configDir: string): ProfilesFile {
     );
   }
 
-  return ConfigValidator.validate(parsed, filePath);
+  // Validate against config.schema.json; throws a descriptive ProfileError on failure.
+  validateProfilesFile(parsed, filePath);
+
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    (parsed as any).version !== 1
+  ) {
+    throw new ProfileError(
+      'CONFIG_READ_ERROR',
+      `Profiles file at ${filePath} has an unsupported format.`,
+    );
+  }
+
+  return parsed as ProfilesFile;
 }
 
 function writeProfilesFile(configDir: string, data: ProfilesFile): void {

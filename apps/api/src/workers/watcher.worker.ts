@@ -25,6 +25,7 @@ import { WorkerLifecycleManager } from '../lib/worker-lifecycle';
 import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
 import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
+import { FullJitterBackoff } from './watcher/stream-reconnect';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -634,6 +635,8 @@ export type StartHorizonSSEStreamOptions = {
   maxReconnectDelayMs?: number;
   maxQueuedMessages?: number;
   heartbeatTimeoutMs?: number;
+  /** Injectable RNG for the Full Jitter backoff (#726) — tests pass a fixed generator for determinism. */
+  reconnectRandom?: () => number;
 };
 
 export const streamMetrics = {
@@ -649,7 +652,6 @@ export async function startHorizonSSEStream(
 ): Promise<() => void> {
   return tracer.startActiveSpan('watcher.startHorizonSSEStream', async (span) => {
     let isClosed = false;
-    let attempts = 1;
     let currentClose: (() => void) | null = null;
     let heartbeatTimeout: NodeJS.Timeout | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
@@ -673,10 +675,20 @@ export async function startHorizonSSEStream(
       return noopClose;
     }
 
-    const maxAttempts = options.maxReconnectAttempts ?? Infinity;
     const reconnectDelay = options.reconnectDelayMs ?? 1000;
     const maxReconnectDelay = options.maxReconnectDelayMs ?? reconnectDelay * 30;
     const maxQueuedMessages = options.maxQueuedMessages ?? 50;
+
+    // Decorrelated Full Jitter backoff (#726): bounds the reconnect delay at
+    // maxReconnectDelay and randomizes it within [0, min(ceiling, base*2^n)]
+    // so hundreds of streams dropped by the same Horizon outage don't all
+    // retry on the same clock tick and re-trigger 429 rate limiting.
+    const backoff = new FullJitterBackoff({
+      baseMs: reconnectDelay,
+      ceilingMs: maxReconnectDelay,
+      maxAttempts: options.maxReconnectAttempts ?? Infinity,
+      random: options.reconnectRandom,
+    });
 
     // Bounded backpressure: process messages one at a time in arrival order so a
     // slow consumer (e.g. a slow DB write) never lets concurrent handler calls pile
@@ -771,7 +783,7 @@ export async function startHorizonSSEStream(
         const handlers: StreamHandlerOptions = {
           onmessage: async (record: HorizonOperationRecord) => {
             resetHeartbeat();
-            attempts = 1;
+            backoff.reset();
             console.log(`[WatcherStream] ⚡ Live SSE stream message received: ${record.type}`);
             await enqueueMessage(async () => {
               await processPaymentRecord(wallet, record);
@@ -783,9 +795,8 @@ export async function startHorizonSSEStream(
             console.error(`[WatcherStream] SSE stream error for ${wallet.publicKey.substring(0, 8)}...:`, errMsg);
             cleanupCurrent();
             if (isClosed) return;
-            if (attempts < maxAttempts) {
-              const delay = Math.min(reconnectDelay * 2 ** (attempts - 1), maxReconnectDelay);
-              attempts++;
+            const delay = backoff.onFailure();
+            if (delay !== null) {
               streamMetrics.reconnects++;
               reconnectTimeout = setTimeout(() => {
                 connect();
@@ -798,9 +809,8 @@ export async function startHorizonSSEStream(
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error(`[WatcherStream] Failed to open SSE stream: ${errMsg}`);
-        if (!isClosed && attempts < maxAttempts) {
-          const delay = Math.min(reconnectDelay * 2 ** (attempts - 1), maxReconnectDelay);
-          attempts++;
+        const delay = !isClosed ? backoff.onFailure() : null;
+        if (delay !== null) {
           streamMetrics.reconnects++;
           reconnectTimeout = setTimeout(() => {
             void connect();
@@ -911,7 +921,7 @@ export async function processSorobanContractsConcurrently(
 export async function pollOnce() {
   return tracer.startActiveSpan('watcher.pollOnce', async (pollSpan) => {
     try {
-      const wallets = await prisma.wallet.findMany();
+      const wallets = await prisma.wallet.findMany({ where: { deletedAt: null } });
       if (wallets.length === 0) {
         pollSpan.setStatus({ code: SpanStatusCode.OK });
         pollSpan.end();
@@ -986,7 +996,7 @@ export async function runWatcher() {
     return watcherLifecycle.runTask(async () => {
       return tracer.startActiveSpan('watcher.poll', async (pollSpan) => {
         try {
-          const wallets = await prisma.wallet.findMany();
+          const wallets = await prisma.wallet.findMany({ where: { deletedAt: null } });
           const activeWalletIds = new Set(wallets.map((wallet) => wallet.id));
           for (const [walletId, close] of walletStreams) {
             if (!activeWalletIds.has(walletId)) {
@@ -1038,23 +1048,7 @@ export async function runWatcher() {
     });
   };
 
-  // Start Horizon SSE streams for live ingestion (#523)
-  const wallets = await prisma.wallet.findMany();
-  const streamClosures: Array<() => void> = [];
-  for (const wallet of wallets) {
-    try {
-      const close = await startHorizonSSEStream(wallet);
-      streamClosures.push(close);
-      watcherLifecycle.registerCleanup(`sse-stream-${wallet.id}`, close);
-    } catch (err: any) {
-      log.error(
-        `[WatcherWorker] Failed to start SSE stream for wallet ${wallet.publicKey}:`,
-        err?.message || err,
-      );
-    }
-  }
-
-  // Also keep a lightweight periodic poll as fallback for catch-up safety
+  // Start initial poll, which opens SSE streams for active wallets and performs catch-up safety.
   await poll();
 
   const pollTimer = setInterval(poll, 30000);

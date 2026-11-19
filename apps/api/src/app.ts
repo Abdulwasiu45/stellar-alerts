@@ -4,10 +4,9 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import { z } from "zod";
 import { randomUUID } from "crypto";
 import prismaPlugin from "./plugins/prisma";
-import { registerSSEPushPlugin } from "./plugins/websocket";
+import * as websocketModule from "./plugins/websocket";
 import { prisma } from "./lib/prisma";
 import { alertQueue } from "./lib/queue";
 import { sorobanServer } from "./lib/soroban";
@@ -15,15 +14,18 @@ import { authRoutes } from "./modules/auth/auth.routes";
 import { walletsRoutes } from "./modules/wallets/wallets.routes";
 import { paymentsRoutes } from "./modules/payments/payments.routes";
 import { webhooksRoutes } from "./modules/webhooks/webhooks.routes";
+import { getWellKnownStellarAlertsMetadata } from "./modules/webhooks/ed25519-signer";
 import { accountRoutes } from "./modules/account/account.routes";
 import { registerSecurityHeaders } from "./middleware/security.middleware";
 import { registerCorrelation } from "./middleware/correlation.middleware";
 import { sorobanStateRoutes } from "./modules/soroban-state/soroban-state.routes";
+import { wasmAnalyzerRoutes } from "./modules/wasm-analyzer/wasm-analyzer.routes";
 import { notificationsRoutes } from "./modules/notifications/notifications.routes";
 import { alertRulesRoutes } from "./modules/alert-rules/alert-rules.routes";
 import { deadLettersRoutes } from "./modules/dead-letters/dead-letters.routes";
 import { discordInteractionsRoutes } from "./modules/discord-interactions";
 import { slackRoutes } from "./modules/slack/slack.routes";
+import { slackInteractionsRoutes } from "./modules/slack-interactions";
 import { graphqlRoutes } from "./modules/graphql/graphql.routes";
 import { exportsRoutes } from "./modules/exports/exports.routes";
 import { simulationRoutes } from "./modules/simulation/simulation.routes";
@@ -34,12 +36,38 @@ import { loggerOptions } from "./lib/logger";
 import { env } from "./config/env";
 import metricsPlugin from "./plugins/metrics";
 
-import { checkRedisReadiness, getRedisStatus } from "./lib/redis";
-import { dbFailover } from "./lib/db-failover";
 import degradedModePlugin from "./plugins/degraded-mode";
 import { AppError } from "./lib/errors";
 
 export { openApiComponentSchemas, openApiOptions } from "./openapi.config";
+
+type DeepHealthCheckStatus = "ok" | "error";
+
+const DEFAULT_DEEP_HEALTH_TIMEOUT_MS = 5_000;
+
+async function runDeepHealthCheck(
+  check: () => Promise<unknown>,
+  timeoutMs = env.DEEP_HEALTH_TIMEOUT_MS ?? DEFAULT_DEEP_HEALTH_TIMEOUT_MS,
+): Promise<DeepHealthCheckStatus> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    await Promise.race([
+      check(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Deep health check timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+    return "ok";
+  } catch {
+    return "error";
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export const buildApp = async () => {
   // Issue #19: Correlation IDs — read x-request-id header or generate a UUID
@@ -57,8 +85,72 @@ export const buildApp = async () => {
     },
   });
 
+  const allowedOrigins = new Set(
+    [
+      (env as { APP_URL?: string }).APP_URL,
+      ...(env.CSRF_ALLOWED_ORIGINS || "").split(","),
+    ]
+      .map((origin) => origin?.trim())
+      .filter((origin): origin is string => Boolean(origin)),
+  );
+
   await app.register(cors, {
-    origin: true, // Allow all origins for dev, or specify 'http://localhost:3000'
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
+    credentials: true,
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof AppError) {
+      if (error.statusCode >= 500) {
+        request.log.error({ err: error }, error.message);
+      } else {
+        request.log.warn({ err: error }, error.message);
+      }
+      return reply.status(error.statusCode).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.details !== undefined ? { details: error.details } : {}),
+          requestId: request.id,
+        },
+      });
+    }
+
+    const maybeFastifyErr = error as { statusCode?: number; validation?: unknown; message?: string };
+    if (maybeFastifyErr.statusCode === 429) {
+      return reply.status(429).send({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message: maybeFastifyErr.message || "Rate limit exceeded",
+      });
+    }
+
+    if (Array.isArray(maybeFastifyErr.validation)) {
+      request.log.warn({ err: error }, "Request schema validation failed");
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+          details: maybeFastifyErr.validation,
+          requestId: request.id,
+        },
+      });
+    }
+
+    request.log.error({ err: error }, "Unhandled error");
+    return reply.status(500).send({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "An unexpected error occurred",
+        requestId: request.id,
+      },
+    });
   });
 
   // Issue #567: correlation IDs — attach x-request-id to every request's
@@ -93,52 +185,42 @@ export const buildApp = async () => {
   await app.register(metricsPlugin);
   await app.register(degradedModePlugin);
 
-  // Issue #64: SSE push endpoint — GET /events
-  await app.register(registerSSEPushPlugin);
+  // Real-time WebSocket (/ws) + authenticated SSE push endpoint (GET /events)
+  if (Object.keys(websocketModule).includes("default") && typeof websocketModule.default === "function") {
+    await app.register(websocketModule.default);
+  }
+  await app.register(websocketModule.registerSSEPushPlugin);
 
   app.get("/health", async () => {
     return { status: "ok" };
   });
 
-  // Issue #18: Deep Health Inspection Probe — no authentication required
+  app.get("/.well-known/stellar-alerts.json", async () => {
+    return getWellKnownStellarAlertsMetadata();
+  });
+
+  // Issue #18 / #566: Deep Health Inspection Probe — no authentication required.
+  // Every dependency probe is bounded by a deadline so a hung Postgres, Redis,
+  // or Horizon connection can never stall a load balancer's health check.
   app.get("/health/deep", async (_req, reply) => {
-    const checks: {
-      postgres: "ok" | "error";
-      redis: "ok" | "error";
-      horizon: "ok" | "error";
-    } = {
-      postgres: "error",
-      redis: "error",
-      horizon: "error",
-    };
-
-    // PostgreSQL ping
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      checks.postgres = "ok";
-    } catch {
-      // leave as 'error'
-    }
-
-    // Redis ping via BullMQ queue's underlying ioredis client
-    try {
-      if (alertQueue && alertQueue.client) {
+    const [postgres, redis, horizon] = await Promise.all([
+      // PostgreSQL ping
+      runDeepHealthCheck(() => prisma.$queryRaw`SELECT 1`),
+      // Redis ping via BullMQ queue's underlying ioredis client.
+      // `Queue.client` is a promise in BullMQ, so it must be awaited before
+      // calling PING.
+      runDeepHealthCheck(async () => {
+        if (!alertQueue || !alertQueue.client) {
+          throw new Error("Redis queue client is not available");
+        }
         const redisClient = await alertQueue.client;
         await (redisClient as any).ping();
-        checks.redis = "ok";
-      }
-    } catch {
-      // leave as 'error'
-    }
+      }),
+      // Horizon / Soroban RPC ping
+      runDeepHealthCheck(() => sorobanServer.getLatestLedger()),
+    ]);
 
-    // Horizon / Soroban RPC ping
-    try {
-      await sorobanServer.getLatestLedger();
-      checks.horizon = "ok";
-    } catch {
-      // leave as 'error'
-    }
-
+    const checks = { postgres, redis, horizon };
     const allOk =
       checks.postgres === "ok" &&
       checks.redis === "ok" &&
@@ -158,10 +240,13 @@ export const buildApp = async () => {
   app.register(alertRulesRoutes);
   app.register(deadLettersRoutes);
   app.register(slackRoutes);
+  app.register(slackInteractionsRoutes);
   await app.register(graphqlRoutes);
   app.register(exportsRoutes);
   app.register(simulationRoutes);
   app.register(discordInteractionsRoutes);
+  app.register(sorobanStateRoutes);
+  app.register(wasmAnalyzerRoutes);
   app.register(adminRoutes);
   app.register(auditRoutes);
 

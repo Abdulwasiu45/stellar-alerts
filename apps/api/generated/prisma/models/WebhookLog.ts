@@ -28,17 +28,22 @@ export type AggregateWebhookLog = {
 
 export type WebhookLogAvgAggregateOutputType = {
   statusCode: number | null
+  durationMs: number | null
 }
 
 export type WebhookLogSumAggregateOutputType = {
   statusCode: number | null
+  durationMs: number | null
 }
 
 export type WebhookLogMinAggregateOutputType = {
   id: string | null
   webhookId: string | null
+  requestUrl: string | null
+  requestPayload: string | null
   statusCode: number | null
   responseBody: string | null
+  durationMs: number | null
   error: string | null
   sentAt: Date | null
   createdAt: Date | null
@@ -47,8 +52,11 @@ export type WebhookLogMinAggregateOutputType = {
 export type WebhookLogMaxAggregateOutputType = {
   id: string | null
   webhookId: string | null
+  requestUrl: string | null
+  requestPayload: string | null
   statusCode: number | null
   responseBody: string | null
+  durationMs: number | null
   error: string | null
   sentAt: Date | null
   createdAt: Date | null
@@ -57,8 +65,11 @@ export type WebhookLogMaxAggregateOutputType = {
 export type WebhookLogCountAggregateOutputType = {
   id: number
   webhookId: number
+  requestUrl: number
+  requestPayload: number
   statusCode: number
   responseBody: number
+  durationMs: number
   error: number
   sentAt: number
   createdAt: number
@@ -68,17 +79,22 @@ export type WebhookLogCountAggregateOutputType = {
 
 export type WebhookLogAvgAggregateInputType = {
   statusCode?: true
+  durationMs?: true
 }
 
 export type WebhookLogSumAggregateInputType = {
   statusCode?: true
+  durationMs?: true
 }
 
 export type WebhookLogMinAggregateInputType = {
   id?: true
   webhookId?: true
+  requestUrl?: true
+  requestPayload?: true
   statusCode?: true
   responseBody?: true
+  durationMs?: true
   error?: true
   sentAt?: true
   createdAt?: true
@@ -87,8 +103,11 @@ export type WebhookLogMinAggregateInputType = {
 export type WebhookLogMaxAggregateInputType = {
   id?: true
   webhookId?: true
+  requestUrl?: true
+  requestPayload?: true
   statusCode?: true
   responseBody?: true
+  durationMs?: true
   error?: true
   sentAt?: true
   createdAt?: true
@@ -97,8 +116,11 @@ export type WebhookLogMaxAggregateInputType = {
 export type WebhookLogCountAggregateInputType = {
   id?: true
   webhookId?: true
+  requestUrl?: true
+  requestPayload?: true
   statusCode?: true
   responseBody?: true
+  durationMs?: true
   error?: true
   sentAt?: true
   createdAt?: true
@@ -194,8 +216,11 @@ export type WebhookLogGroupByArgs<ExtArgs extends runtime.Types.Extensions.Inter
 export type WebhookLogGroupByOutputType = {
   id: string
   webhookId: string
+  requestUrl: string | null
+  requestPayload: string | null
   statusCode: number | null
   responseBody: string | null
+  durationMs: number | null
   error: string | null
   sentAt: Date
   createdAt: Date
@@ -227,8 +252,11 @@ export type WebhookLogWhereInput = {
   NOT?: Prisma.WebhookLogWhereInput | Prisma.WebhookLogWhereInput[]
   id?: Prisma.StringFilter<"WebhookLog"> | string
   webhookId?: Prisma.StringFilter<"WebhookLog"> | string
+  requestUrl?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
+  requestPayload?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
   statusCode?: Prisma.IntNullableFilter<"WebhookLog"> | number | null
   responseBody?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
+  durationMs?: Prisma.FloatNullableFilter<"WebhookLog"> | number | null
   error?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
   sentAt?: Prisma.DateTimeFilter<"WebhookLog"> | Date | string
   createdAt?: Prisma.DateTimeFilter<"WebhookLog"> | Date | string
@@ -238,8 +266,11 @@ export type WebhookLogWhereInput = {
 export type WebhookLogOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   webhookId?: Prisma.SortOrder
+  requestUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  requestPayload?: Prisma.SortOrderInput | Prisma.SortOrder
   statusCode?: Prisma.SortOrderInput | Prisma.SortOrder
   responseBody?: Prisma.SortOrderInput | Prisma.SortOrder
+  durationMs?: Prisma.SortOrderInput | Prisma.SortOrder
   error?: Prisma.SortOrderInput | Prisma.SortOrder
   sentAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -252,8 +283,11 @@ export type WebhookLogWhereUniqueInput = Prisma.AtLeast<{
   OR?: Prisma.WebhookLogWhereInput[]
   NOT?: Prisma.WebhookLogWhereInput | Prisma.WebhookLogWhereInput[]
   webhookId?: Prisma.StringFilter<"WebhookLog"> | string
+  requestUrl?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
+  requestPayload?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
   statusCode?: Prisma.IntNullableFilter<"WebhookLog"> | number | null
   responseBody?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
+  durationMs?: Prisma.FloatNullableFilter<"WebhookLog"> | number | null
   error?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
   sentAt?: Prisma.DateTimeFilter<"WebhookLog"> | Date | string
   createdAt?: Prisma.DateTimeFilter<"WebhookLog"> | Date | string
@@ -263,8 +297,11 @@ export type WebhookLogWhereUniqueInput = Prisma.AtLeast<{
 export type WebhookLogOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   webhookId?: Prisma.SortOrder
+  requestUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  requestPayload?: Prisma.SortOrderInput | Prisma.SortOrder
   statusCode?: Prisma.SortOrderInput | Prisma.SortOrder
   responseBody?: Prisma.SortOrderInput | Prisma.SortOrder
+  durationMs?: Prisma.SortOrderInput | Prisma.SortOrder
   error?: Prisma.SortOrderInput | Prisma.SortOrder
   sentAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -281,8 +318,11 @@ export type WebhookLogScalarWhereWithAggregatesInput = {
   NOT?: Prisma.WebhookLogScalarWhereWithAggregatesInput | Prisma.WebhookLogScalarWhereWithAggregatesInput[]
   id?: Prisma.StringWithAggregatesFilter<"WebhookLog"> | string
   webhookId?: Prisma.StringWithAggregatesFilter<"WebhookLog"> | string
+  requestUrl?: Prisma.StringNullableWithAggregatesFilter<"WebhookLog"> | string | null
+  requestPayload?: Prisma.StringNullableWithAggregatesFilter<"WebhookLog"> | string | null
   statusCode?: Prisma.IntNullableWithAggregatesFilter<"WebhookLog"> | number | null
   responseBody?: Prisma.StringNullableWithAggregatesFilter<"WebhookLog"> | string | null
+  durationMs?: Prisma.FloatNullableWithAggregatesFilter<"WebhookLog"> | number | null
   error?: Prisma.StringNullableWithAggregatesFilter<"WebhookLog"> | string | null
   sentAt?: Prisma.DateTimeWithAggregatesFilter<"WebhookLog"> | Date | string
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"WebhookLog"> | Date | string
@@ -290,8 +330,11 @@ export type WebhookLogScalarWhereWithAggregatesInput = {
 
 export type WebhookLogCreateInput = {
   id?: string
+  requestUrl?: string | null
+  requestPayload?: string | null
   statusCode?: number | null
   responseBody?: string | null
+  durationMs?: number | null
   error?: string | null
   sentAt?: Date | string
   createdAt?: Date | string
@@ -301,8 +344,11 @@ export type WebhookLogCreateInput = {
 export type WebhookLogUncheckedCreateInput = {
   id?: string
   webhookId: string
+  requestUrl?: string | null
+  requestPayload?: string | null
   statusCode?: number | null
   responseBody?: string | null
+  durationMs?: number | null
   error?: string | null
   sentAt?: Date | string
   createdAt?: Date | string
@@ -310,8 +356,11 @@ export type WebhookLogUncheckedCreateInput = {
 
 export type WebhookLogUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
+  requestUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  requestPayload?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusCode?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   responseBody?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationMs?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sentAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -321,8 +370,11 @@ export type WebhookLogUpdateInput = {
 export type WebhookLogUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   webhookId?: Prisma.StringFieldUpdateOperationsInput | string
+  requestUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  requestPayload?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusCode?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   responseBody?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationMs?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sentAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -331,8 +383,11 @@ export type WebhookLogUncheckedUpdateInput = {
 export type WebhookLogCreateManyInput = {
   id?: string
   webhookId: string
+  requestUrl?: string | null
+  requestPayload?: string | null
   statusCode?: number | null
   responseBody?: string | null
+  durationMs?: number | null
   error?: string | null
   sentAt?: Date | string
   createdAt?: Date | string
@@ -340,8 +395,11 @@ export type WebhookLogCreateManyInput = {
 
 export type WebhookLogUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
+  requestUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  requestPayload?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusCode?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   responseBody?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationMs?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sentAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -350,8 +408,11 @@ export type WebhookLogUpdateManyMutationInput = {
 export type WebhookLogUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   webhookId?: Prisma.StringFieldUpdateOperationsInput | string
+  requestUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  requestPayload?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusCode?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   responseBody?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationMs?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sentAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -370,8 +431,11 @@ export type WebhookLogOrderByRelationAggregateInput = {
 export type WebhookLogCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   webhookId?: Prisma.SortOrder
+  requestUrl?: Prisma.SortOrder
+  requestPayload?: Prisma.SortOrder
   statusCode?: Prisma.SortOrder
   responseBody?: Prisma.SortOrder
+  durationMs?: Prisma.SortOrder
   error?: Prisma.SortOrder
   sentAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -379,13 +443,17 @@ export type WebhookLogCountOrderByAggregateInput = {
 
 export type WebhookLogAvgOrderByAggregateInput = {
   statusCode?: Prisma.SortOrder
+  durationMs?: Prisma.SortOrder
 }
 
 export type WebhookLogMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   webhookId?: Prisma.SortOrder
+  requestUrl?: Prisma.SortOrder
+  requestPayload?: Prisma.SortOrder
   statusCode?: Prisma.SortOrder
   responseBody?: Prisma.SortOrder
+  durationMs?: Prisma.SortOrder
   error?: Prisma.SortOrder
   sentAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -394,8 +462,11 @@ export type WebhookLogMaxOrderByAggregateInput = {
 export type WebhookLogMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   webhookId?: Prisma.SortOrder
+  requestUrl?: Prisma.SortOrder
+  requestPayload?: Prisma.SortOrder
   statusCode?: Prisma.SortOrder
   responseBody?: Prisma.SortOrder
+  durationMs?: Prisma.SortOrder
   error?: Prisma.SortOrder
   sentAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
@@ -403,6 +474,7 @@ export type WebhookLogMinOrderByAggregateInput = {
 
 export type WebhookLogSumOrderByAggregateInput = {
   statusCode?: Prisma.SortOrder
+  durationMs?: Prisma.SortOrder
 }
 
 export type WebhookLogCreateNestedManyWithoutWebhookInput = {
@@ -449,8 +521,11 @@ export type WebhookLogUncheckedUpdateManyWithoutWebhookNestedInput = {
 
 export type WebhookLogCreateWithoutWebhookInput = {
   id?: string
+  requestUrl?: string | null
+  requestPayload?: string | null
   statusCode?: number | null
   responseBody?: string | null
+  durationMs?: number | null
   error?: string | null
   sentAt?: Date | string
   createdAt?: Date | string
@@ -458,8 +533,11 @@ export type WebhookLogCreateWithoutWebhookInput = {
 
 export type WebhookLogUncheckedCreateWithoutWebhookInput = {
   id?: string
+  requestUrl?: string | null
+  requestPayload?: string | null
   statusCode?: number | null
   responseBody?: string | null
+  durationMs?: number | null
   error?: string | null
   sentAt?: Date | string
   createdAt?: Date | string
@@ -497,8 +575,11 @@ export type WebhookLogScalarWhereInput = {
   NOT?: Prisma.WebhookLogScalarWhereInput | Prisma.WebhookLogScalarWhereInput[]
   id?: Prisma.StringFilter<"WebhookLog"> | string
   webhookId?: Prisma.StringFilter<"WebhookLog"> | string
+  requestUrl?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
+  requestPayload?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
   statusCode?: Prisma.IntNullableFilter<"WebhookLog"> | number | null
   responseBody?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
+  durationMs?: Prisma.FloatNullableFilter<"WebhookLog"> | number | null
   error?: Prisma.StringNullableFilter<"WebhookLog"> | string | null
   sentAt?: Prisma.DateTimeFilter<"WebhookLog"> | Date | string
   createdAt?: Prisma.DateTimeFilter<"WebhookLog"> | Date | string
@@ -506,8 +587,11 @@ export type WebhookLogScalarWhereInput = {
 
 export type WebhookLogCreateManyWebhookInput = {
   id?: string
+  requestUrl?: string | null
+  requestPayload?: string | null
   statusCode?: number | null
   responseBody?: string | null
+  durationMs?: number | null
   error?: string | null
   sentAt?: Date | string
   createdAt?: Date | string
@@ -515,8 +599,11 @@ export type WebhookLogCreateManyWebhookInput = {
 
 export type WebhookLogUpdateWithoutWebhookInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
+  requestUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  requestPayload?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusCode?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   responseBody?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationMs?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sentAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -524,8 +611,11 @@ export type WebhookLogUpdateWithoutWebhookInput = {
 
 export type WebhookLogUncheckedUpdateWithoutWebhookInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
+  requestUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  requestPayload?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusCode?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   responseBody?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationMs?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sentAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -533,8 +623,11 @@ export type WebhookLogUncheckedUpdateWithoutWebhookInput = {
 
 export type WebhookLogUncheckedUpdateManyWithoutWebhookInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
+  requestUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  requestPayload?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusCode?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   responseBody?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationMs?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sentAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -545,8 +638,11 @@ export type WebhookLogUncheckedUpdateManyWithoutWebhookInput = {
 export type WebhookLogSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   webhookId?: boolean
+  requestUrl?: boolean
+  requestPayload?: boolean
   statusCode?: boolean
   responseBody?: boolean
+  durationMs?: boolean
   error?: boolean
   sentAt?: boolean
   createdAt?: boolean
@@ -556,8 +652,11 @@ export type WebhookLogSelect<ExtArgs extends runtime.Types.Extensions.InternalAr
 export type WebhookLogSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   webhookId?: boolean
+  requestUrl?: boolean
+  requestPayload?: boolean
   statusCode?: boolean
   responseBody?: boolean
+  durationMs?: boolean
   error?: boolean
   sentAt?: boolean
   createdAt?: boolean
@@ -567,8 +666,11 @@ export type WebhookLogSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ex
 export type WebhookLogSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   webhookId?: boolean
+  requestUrl?: boolean
+  requestPayload?: boolean
   statusCode?: boolean
   responseBody?: boolean
+  durationMs?: boolean
   error?: boolean
   sentAt?: boolean
   createdAt?: boolean
@@ -578,14 +680,17 @@ export type WebhookLogSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ex
 export type WebhookLogSelectScalar = {
   id?: boolean
   webhookId?: boolean
+  requestUrl?: boolean
+  requestPayload?: boolean
   statusCode?: boolean
   responseBody?: boolean
+  durationMs?: boolean
   error?: boolean
   sentAt?: boolean
   createdAt?: boolean
 }
 
-export type WebhookLogOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "webhookId" | "statusCode" | "responseBody" | "error" | "sentAt" | "createdAt", ExtArgs["result"]["webhookLog"]>
+export type WebhookLogOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "webhookId" | "requestUrl" | "requestPayload" | "statusCode" | "responseBody" | "durationMs" | "error" | "sentAt" | "createdAt", ExtArgs["result"]["webhookLog"]>
 export type WebhookLogInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   webhook?: boolean | Prisma.WebhookDefaultArgs<ExtArgs>
 }
@@ -604,8 +709,11 @@ export type $WebhookLogPayload<ExtArgs extends runtime.Types.Extensions.Internal
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     webhookId: string
+    requestUrl: string | null
+    requestPayload: string | null
     statusCode: number | null
     responseBody: string | null
+    durationMs: number | null
     error: string | null
     sentAt: Date
     createdAt: Date
@@ -1035,8 +1143,11 @@ export interface Prisma__WebhookLogClient<T, Null = never, ExtArgs extends runti
 export interface WebhookLogFieldRefs {
   readonly id: Prisma.FieldRef<"WebhookLog", 'String'>
   readonly webhookId: Prisma.FieldRef<"WebhookLog", 'String'>
+  readonly requestUrl: Prisma.FieldRef<"WebhookLog", 'String'>
+  readonly requestPayload: Prisma.FieldRef<"WebhookLog", 'String'>
   readonly statusCode: Prisma.FieldRef<"WebhookLog", 'Int'>
   readonly responseBody: Prisma.FieldRef<"WebhookLog", 'String'>
+  readonly durationMs: Prisma.FieldRef<"WebhookLog", 'Float'>
   readonly error: Prisma.FieldRef<"WebhookLog", 'String'>
   readonly sentAt: Prisma.FieldRef<"WebhookLog", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"WebhookLog", 'DateTime'>

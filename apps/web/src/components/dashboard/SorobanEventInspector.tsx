@@ -286,7 +286,9 @@ export function SorobanEventInspector({
 
   const copyEventJson = () => {
     if (!selectedEvent) return;
-    navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2));
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2));
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -446,7 +448,7 @@ export function SorobanEventInspector({
                   aria-label={
                     copied
                       ? "JSON copied to clipboard"
-                      : "Copy event JSON to clipboard"
+                      : "Copy JSON to clipboard"
                   }
                 >
                   {copied ? (

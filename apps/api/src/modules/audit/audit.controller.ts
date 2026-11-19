@@ -1,36 +1,33 @@
-import { Controller, Get, Post, Body, Param, HttpException, HttpStatus } from '@nestjs/common';
 import { MerkleAuditService } from './merkle.service';
 import { MerkleProof } from '@stellar-alerts/shared';
+
+export class AuditHttpError extends Error {
+  public readonly statusCode: number;
+  public readonly response: Record<string, unknown>;
+
+  constructor(response: Record<string, unknown>, statusCode: number) {
+    super(typeof response.error === 'string' ? response.error : 'Audit request failed');
+    this.name = 'AuditHttpError';
+    this.statusCode = statusCode;
+    this.response = response;
+  }
+}
 
 /**
  * AuditController
  *
- * REST endpoints for Merkle tree audit operations.
- * Allows external clients to:
- * 1. Request Merkle roots for specific dates
- * 2. Generate and retrieve inclusion proofs
- * 3. Independently verify alert inclusion
+ * Handlers for Merkle tree audit operations.
  */
-@Controller('audit')
 export class AuditController {
-  constructor(private readonly merkleService: MerkleAuditService) {}
+  constructor(private readonly merkleService: MerkleAuditService = new MerkleAuditService()) {}
 
-  /**
-   * Generates or retrieves the Merkle root for a specific date.
-   * GET /audit/merkle-root/:date
-   *
-   * @param date ISO date string (YYYY-MM-DD)
-   * @returns Merkle root hash and tree size
-   */
-  @Get('merkle-root/:date')
-  async getMerkleRoot(@Param('date') date: string) {
+  async getMerkleRoot(date: string, userId?: string) {
     try {
-      // Validate date format
       if (!this.isValidDateFormat(date)) {
         throw new Error('Invalid date format. Expected YYYY-MM-DD');
       }
 
-      const result = await this.merkleService.generateDailyMerkleRoot(date);
+      const result = await this.merkleService.generateDailyMerkleRoot(date, userId);
       return {
         success: true,
         date,
@@ -39,32 +36,23 @@ export class AuditController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      throw new HttpException(
+      throw new AuditHttpError(
         {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to generate Merkle root',
         },
-        HttpStatus.INTERNAL_SERVER_ERROR
+        500,
       );
     }
   }
 
-  /**
-   * Generates a Merkle inclusion proof for a specific alert.
-   * GET /audit/proof/:alertId/:date
-   *
-   * @param alertId The alert ID
-   * @param date ISO date string (YYYY-MM-DD)
-   * @returns Merkle inclusion proof (leaf hash + path)
-   */
-  @Get('proof/:alertId/:date')
-  async getInclusionProof(@Param('alertId') alertId: string, @Param('date') date: string) {
+  async getInclusionProof(alertId: string, date: string, userId?: string) {
     try {
       if (!this.isValidDateFormat(date)) {
         throw new Error('Invalid date format. Expected YYYY-MM-DD');
       }
 
-      const proof = await this.merkleService.generateAlertInclusionProof(alertId, date);
+      const proof = await this.merkleService.generateAlertInclusionProof(alertId, date, userId);
       return {
         success: true,
         alertId,
@@ -73,38 +61,18 @@ export class AuditController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      throw new HttpException(
+      const message = error instanceof Error ? error.message : 'Failed to generate inclusion proof';
+      throw new AuditHttpError(
         {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to generate inclusion proof',
+          error: message,
         },
-        error instanceof Error && error.message.includes('not found')
-          ? HttpStatus.NOT_FOUND
-          : HttpStatus.INTERNAL_SERVER_ERROR
+        message.includes('not found') ? 404 : 500,
       );
     }
   }
 
-  /**
-   * Verifies a Merkle inclusion proof against a root hash.
-   * This is an independent verification operation that does not require database access
-   * and can be performed by third-party auditors.
-   *
-   * POST /audit/verify
-   *
-   * Request body:
-   * {
-   *   "alertId": "alert-uuid",
-   *   "proof": { "leafHash": "...", "path": [...] },
-   *   "expectedRoot": "merkle-root-hex"
-   * }
-   *
-   * @returns Verification result (true/false)
-   */
-  @Post('verify')
-  async verifyProof(
-    @Body() body: { alertId: string; proof: MerkleProof; expectedRoot: string }
-  ) {
+  async verifyProof(body: { alertId: string; proof: MerkleProof; expectedRoot: string }) {
     try {
       const { alertId, proof, expectedRoot } = body;
 
@@ -121,24 +89,17 @@ export class AuditController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      throw new HttpException(
+      throw new AuditHttpError(
         {
           success: false,
           error: error instanceof Error ? error.message : 'Verification failed',
         },
-        HttpStatus.BAD_REQUEST
+        400,
       );
     }
   }
 
-  /**
-   * Stores a Merkle root commitment for audit trail.
-   * POST /audit/commit
-   *
-   * @param body Contains date, root, and treeSize
-   */
-  @Post('commit')
-  async commitMerkleRoot(@Body() body: { date: string; root: string; treeSize: number }) {
+  async commitMerkleRoot(body: { date: string; root: string; treeSize: number }) {
     try {
       const { date, root, treeSize } = body;
 
@@ -158,19 +119,16 @@ export class AuditController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      throw new HttpException(
+      throw new AuditHttpError(
         {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to store commitment',
         },
-        HttpStatus.BAD_REQUEST
+        400,
       );
     }
   }
 
-  /**
-   * Helper: validates date format YYYY-MM-DD
-   */
   private isValidDateFormat(dateString: string): boolean {
     return /^\d{4}-\d{2}-\d{2}$/.test(dateString) && !isNaN(Date.parse(`${dateString}T00:00:00Z`));
   }

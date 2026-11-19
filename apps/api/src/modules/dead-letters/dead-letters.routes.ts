@@ -12,8 +12,24 @@ export async function deadLettersRoutes(app: FastifyInstance) {
 
   app.get('/dead-letters', deadLettersController.list.bind(deadLettersController));
   app.get('/dead-letters/:id', deadLettersController.get.bind(deadLettersController));
-  app.post('/dead-letters/:id/replay', deadLettersController.replay.bind(deadLettersController));
-  app.post('/dead-letters/:id/suppress', deadLettersController.suppress.bind(deadLettersController));
+  app.post(
+    '/dead-letters/:id/replay',
+    {
+      preValidation: idempotent.preValidation,
+      onSend: idempotent.onSend,
+      onResponse: idempotent.onResponse,
+    },
+    deadLettersController.replay.bind(deadLettersController),
+  );
+  app.post(
+    '/dead-letters/:id/suppress',
+    {
+      preValidation: idempotent.preValidation,
+      onSend: idempotent.onSend,
+      onResponse: idempotent.onResponse,
+    },
+    deadLettersController.suppress.bind(deadLettersController),
+  );
 
   // Webhook dead-letter sandbox replay inspector (#456). Static segments are
   // registered before /:id so Fastify never treats "sandbox-replays" as an id.

@@ -4,6 +4,7 @@ import { FastifyInstance } from 'fastify';
 import { typeDefs } from './graphql.schema';
 import { createResolvers } from './graphql.resolvers';
 import { redis } from '../../lib/redis';
+import { authenticateHook } from '../../middleware/auth.middleware';
 
 export const graphqlRoutes = async (app: FastifyInstance) => {
   const resolvers = createResolvers(redis);
@@ -21,6 +22,7 @@ export const graphqlRoutes = async (app: FastifyInstance) => {
   app.route({
     url: '/graphql',
     method: ['GET', 'POST'],
+    preHandler: [authenticateHook],
     handler,
   });
 };

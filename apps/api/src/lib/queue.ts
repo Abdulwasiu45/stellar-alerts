@@ -4,10 +4,9 @@ import { env } from '../config/env';
 import { fetchWithTimeout, withDeadline } from './external-request';
 import { workerFairnessManager } from './rate-budget';
 import { registerRedisCleanupTask, redisCache } from './redis';
-import { cryptoVault } from '../utils/crypto-vault';
 import { applyWebhookPayloadTemplate } from '../utils/payload-template';
 import { adaptiveWebhookRateLimiter, waitForAdaptiveBackoff } from '../utils/rate-limiter';
-import { buildWebhookSignatureHeaders } from '../utils/webhook-signer';
+import { webhooksService } from '../modules/webhooks/webhooks.service';
 import { dispatchWhatsAppAlert, WhatsAppInvalidNumberError } from '../utils/whatsapp';
 import { prisma } from './prisma';
 import { createLogger } from './logger';
@@ -17,6 +16,7 @@ import { instrumentedWebhookFetch } from './webhook-telemetry';
 import { persistDeadLetter } from './dead-letter';
 import { ssrfSafeFetch, validateUrlForSsrf } from '../utils/ssrf';
 import { decryptPersonalField } from '../utils/privacy';
+import { parseStoredEmailTemplate } from '../utils/email-template';
 import { emailService } from '../services/email.service';
 import { buildTelegramPaymentCard, dispatchTelegramAlert } from '../utils/telegram-dispatcher';
 import { dispatchDiscordAlert } from '../utils/discord';
@@ -24,23 +24,11 @@ import { dispatchSlackAlert, isValidSlackWebhookUrl } from '../utils/slack';
 import { dispatchPushNotification, PushNotificationData } from '../utils/push-protocol';
 import { classifyWorkerError, getWorkerMaxAttempts, PermanentWorkerError } from './worker-retry-policy';
 import { QueueLaneManager, QueueLane, resolveLaneForAlert } from './queue-lanes';
-
-function decryptWebhookSecret(webhook: {
-  keyVersion: number;
-  secretIv: string;
-  secretAuthTag: string;
-  secretCiphertext: string;
-}): string {
-  const encrypted = [
-    String(webhook.keyVersion),
-    webhook.secretIv,
-    webhook.secretAuthTag,
-    webhook.secretCiphertext,
-  ].join(':');
-  return cryptoVault.decrypt(encrypted);
-}
+import type { FilterRuleGroup } from './rules-engine';
 
 const queueLog = createLogger({ module: 'Queue' });
+
+export type AlertFilterConfig = FilterRuleGroup;
 
 export interface AlertJobData {
   paymentId: string;
@@ -51,27 +39,35 @@ export interface AlertJobData {
   assetIssuer?: string | null;
   fromAddress: string;
   receivedAt: string;
+  /** Correlation ID propagated from the originating HTTP request, if any. */
+  requestId?: string;
+  /** W3C traceparent propagated across BullMQ into webhook dispatch spans. */
+  traceparent?: string;
   /** Optional alert filter config — if provided, alerts are suppressed when rules fail */
   filterConfig?: AlertFilterConfig;
   /** Severity classification used to route the job into a priority lane */
   severity?: string;
 }
 
+interface WebhookDispatchMeta {
+  webhookId: string;
+  traceparent?: string;
+}
+
 const redisHost = process.env.REDIS_HOST || "localhost";
 const redisPort = parseInt(process.env.REDIS_PORT || "6379", 10);
-const WEBHOOK_TIMEOUT_MS = 10000;
-const CIRCUIT_BREAKER_THRESHOLD = 10; // 10 consecutive 5xx failures opens circuit
-const CIRCUIT_BREAKER_TIMEOUT = 60000; // 60 second timeout before half-open
+export const CIRCUIT_BREAKER_THRESHOLD = 10; // 10 consecutive 5xx failures opens circuit
+export const CIRCUIT_BREAKER_TIMEOUT = 60000; // 60 second timeout before half-open
 
 export let alertQueue: Queue<AlertJobData> | null = null;
 export let dlqQueue: Queue<AlertJobData> | null = null;
 export let alertQueueEvents: QueueEvents | null = null;
 export let alertWorker: Worker<AlertJobData> | null = null;
-export let queueLaneManager: QueueLaneManager | null = null;
+export let queueLaneManager: QueueLaneManager<AlertJobData> | null = null;
 
-const circuitBreakers = new Map<string, CircuitBreaker<any>>();
+export const circuitBreakers = new Map<string, CircuitBreaker<any>>();
 
-interface CircuitBreakerState {
+export interface CircuitBreakerState {
   state: "closed" | "open" | "half-open";
   failureCount: number;
   openedAt?: number;
@@ -158,7 +154,18 @@ async function assertBotIsChannelAdmin(botToken: string, chatId: string): Promis
   }
 }
 
-async function getOrCreateCircuitBreaker(
+const WEBHOOK_LOG_RESPONSE_LIMIT = 5000;
+const WEBHOOK_LOG_PAYLOAD_LIMIT = 10000;
+
+async function readWebhookResponseBody(response: { text(): Promise<string> }): Promise<string> {
+  try {
+    return (await response.text()).substring(0, WEBHOOK_LOG_RESPONSE_LIMIT);
+  } catch {
+    return "";
+  }
+}
+
+export async function getOrCreateCircuitBreaker(
   webhookId: string,
 ): Promise<CircuitBreaker<any>> {
   if (circuitBreakers.has(webhookId)) {
@@ -183,24 +190,34 @@ async function getOrCreateCircuitBreaker(
         const error = new Error(`Rate limited: ${response.status}`) as Error & {
           statusCode?: number;
           headers?: Headers;
+          responseBody?: string;
         };
         error.statusCode = 429;
         error.headers = response.headers;
+        error.responseBody = await readWebhookResponseBody(response);
         throw error;
       }
 
       if (response.status >= 500) {
-        throw new Error(`Server error: ${response.status}`);
+        const error = new Error(`Server error: ${response.status}`) as Error & {
+          statusCode?: number;
+          responseBody?: string;
+        };
+        error.statusCode = response.status;
+        error.responseBody = await readWebhookResponseBody(response);
+        throw error;
       }
 
       return response;
     },
     {
-      timeout: WEBHOOK_TIMEOUT_MS,
+      timeout: env.WEBHOOK_TIMEOUT_MS || 10000,
       errorThresholdPercentage: 100,
       volumeThreshold: CIRCUIT_BREAKER_THRESHOLD,
+      resetTimeout: CIRCUIT_BREAKER_TIMEOUT,
       rollingCountTimeout: 60000,
       name: `webhook-${webhookId}`,
+      errorFilter: (err: any) => err?.statusCode === 429 || err?.message?.includes("Rate limited"),
     },
   );
 
@@ -217,34 +234,24 @@ async function getOrCreateCircuitBreaker(
     console.log(`[CircuitBreaker] Initialized webhook ${webhookId} with Redis state: ${redisState.state}`);
   }
 
-  // Add event listeners to sync state changes to Redis
-  breaker.on('open', () => {
-    syncCircuitBreakerStateToRedis(webhookId, {
-      state: 'open',
-      failureCount: CIRCUIT_BREAKER_THRESHOLD,
-      openedAt: Date.now(),
-    });
+  // Add event listeners to sync state changes to Redis and DB
+  breaker.on('open', async () => {
+    await updateCircuitBreakerState(webhookId, 'open', CIRCUIT_BREAKER_THRESHOLD);
   });
 
-  breaker.on('halfOpen', () => {
-    syncCircuitBreakerStateToRedis(webhookId, {
-      state: 'half-open',
-      failureCount: 0,
-    });
+  breaker.on('halfOpen', async () => {
+    await updateCircuitBreakerState(webhookId, 'half-open', 0);
   });
 
-  breaker.on('close', () => {
-    syncCircuitBreakerStateToRedis(webhookId, {
-      state: 'closed',
-      failureCount: 0,
-    });
+  breaker.on('close', async () => {
+    await updateCircuitBreakerState(webhookId, 'closed', 0);
   });
 
   circuitBreakers.set(webhookId, breaker);
   return breaker;
 }
 
-async function updateCircuitBreakerState(
+export async function updateCircuitBreakerState(
   webhookId: string,
   state: "closed" | "open" | "half-open",
   failureCount: number = 0,
@@ -281,6 +288,14 @@ export async function dispatchWebhookAndLog(
   traceparent?: string,
 ) {
   let targetUrl: string | undefined;
+  // Request context persisted on every WebhookLog row so users can debug
+  // exactly what was sent, where, and how the endpoint answered.
+  let requestPayload: string | undefined;
+  let startedAt: number | undefined;
+  const requestContext = () => ({
+    requestUrl: targetUrl,
+    requestPayload: requestPayload?.substring(0, WEBHOOK_LOG_PAYLOAD_LIMIT),
+  });
 
   try {
     const webhook = await prisma.webhook.findUnique({
@@ -303,6 +318,7 @@ export async function dispatchWebhookAndLog(
       await prisma.webhookLog.create({
         data: {
           webhookId,
+          ...requestContext(),
           error: `SSRF blocked: ${ssrfErr.message}`,
         },
       });
@@ -321,6 +337,7 @@ export async function dispatchWebhookAndLog(
         await prisma.webhookLog.create({
           data: {
             webhookId,
+            ...requestContext(),
             error: "Circuit breaker is open, endpoint temporarily disabled",
           },
         });
@@ -348,6 +365,7 @@ export async function dispatchWebhookAndLog(
       await prisma.webhookLog.create({
         data: {
           webhookId,
+          ...requestContext(),
           error: `Payload template ${templateResult.phase} error: ${templateResult.error}`,
         },
       });
@@ -355,23 +373,33 @@ export async function dispatchWebhookAndLog(
     }
 
     const payloadString = templateResult.body;
-    const webhookSecret = decryptWebhookSecret(webhook);
-    const signatureHeaders = buildWebhookSignatureHeaders(payloadString, webhookSecret);
+    requestPayload = payloadString;
+    // Dual-signature headers (#721): during an active rotation grace period
+    // this attaches both the new secret's signature and the previous
+    // secret's, so subscribers who haven't redeployed the rotated secret
+    // yet still verify successfully until the grace window closes.
+    const { headers: signatureHeaders } = webhooksService.buildDualSignatureHeaders(
+      webhook,
+      payloadString,
+    );
 
     const breaker = await getOrCreateCircuitBreaker(webhookId);
     const dispatchMeta: WebhookDispatchMeta = { webhookId, traceparent };
+    startedAt = Date.now();
     const response = await breaker.fire(webhook.url, payloadString, {
       "Content-Type": "application/json",
       ...signatureHeaders,
     }, dispatchMeta);
 
-    const responseBody = await response.text();
+    const responseBody = await readWebhookResponseBody(response);
 
     const deliveryLog = await prisma.webhookLog.create({
       data: {
         webhookId,
+        ...requestContext(),
         statusCode: response.status,
-        responseBody: responseBody.substring(0, 5000),
+        responseBody,
+        durationMs: Date.now() - startedAt,
       },
     });
     await publishDeliveryEvent(webhook.userId, deliveryLog);
@@ -397,6 +425,7 @@ export async function dispatchWebhookAndLog(
       await prisma.webhookLog.create({
         data: {
           webhookId,
+          ...requestContext(),
           error: "Circuit breaker is open",
         },
       });
@@ -408,7 +437,10 @@ export async function dispatchWebhookAndLog(
       await prisma.webhookLog.create({
         data: {
           webhookId,
+          ...requestContext(),
           statusCode: 429,
+          responseBody: error.responseBody,
+          durationMs: startedAt !== undefined ? Date.now() - startedAt : undefined,
           error: `Endpoint rate limited webhook delivery; retrying after ${delayMs}ms`,
         },
       });
@@ -445,6 +477,10 @@ export async function dispatchWebhookAndLog(
     const failureLog = await prisma.webhookLog.create({
       data: {
         webhookId,
+        ...requestContext(),
+        statusCode: typeof error.statusCode === "number" ? error.statusCode : undefined,
+        responseBody: error.responseBody,
+        durationMs: startedAt !== undefined ? Date.now() - startedAt : undefined,
         error: error.message.substring(0, 1000),
       },
     });
@@ -568,7 +604,7 @@ try {
   dlqQueue = new Queue<AlertJobData>('payment-alerts-dlq', { connection });
   alertQueueEvents = new QueueEvents('payment-alerts', { connection });
 
-  queueLaneManager = new QueueLaneManager({
+  queueLaneManager = new QueueLaneManager<AlertJobData>({
     connection,
     defaultJobOptions: {
       attempts: getWorkerMaxAttempts(),
@@ -888,6 +924,9 @@ export async function processAlertDispatch(data: AlertJobData) {
               assetIssuer: data.assetIssuer,
               fromAddress: data.fromAddress,
               receivedAt: data.receivedAt,
+              // Custom receipt branding saved from the template builder (#572).
+              // Malformed/legacy JSON falls back to the default template.
+              branding: parseStoredEmailTemplate(wallet?.user?.notifyPrefs?.emailTemplate),
             }
           );
         }
@@ -975,6 +1014,11 @@ export async function enqueuePaymentAlert(data: AlertJobData) {
   try {
     const job = await alertQueue.add("dispatch-alert", data, {
       jobId: `payment-${data.txHash}`,
+      attempts: 5,
+      backoff: {
+        type: "exponential",
+        delay: 2000,
+      },
     });
     queueLog.info({ jobId: job.id, txHash: data.txHash, requestId: data.requestId }, '📨 Enqueued payment alert job');
     return job;
@@ -1011,6 +1055,11 @@ export async function enqueuePaymentAlertStrict(data: AlertJobData) {
 
   const job = await alertQueue.add("dispatch-alert", data, {
     jobId: `payment-${data.txHash}`,
+    attempts: 5,
+    backoff: {
+      type: "exponential",
+      delay: 2000,
+    },
   });
   if (!job?.id) {
     throw new Error(`BullMQ did not confirm alert job for ${data.txHash}`);

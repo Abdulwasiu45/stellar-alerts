@@ -19,7 +19,7 @@ describe('PrometheusMetricsService', () => {
       expect(output).toContain('stellar_alerts_ledger_lag_seconds');
       expect(output).toContain('source="horizon"');
       expect(output).toContain('source="soroban-rpc"');
-      expect(output).toContain('_count 2'); // 2 horizon observations
+      expect(output).toContain('stellar_alerts_ledger_lag_seconds_count{source="horizon"} 2'); // 2 horizon observations
     });
 
     it('should produce valid Prometheus format for lag metrics', () => {
@@ -38,7 +38,7 @@ describe('PrometheusMetricsService', () => {
 
       const output = service.render();
       // Only the valid value should be counted
-      expect(output).toContain('_count 1');
+      expect(output).toContain('stellar_alerts_ledger_lag_seconds_count{source="horizon"} 1');
     });
   });
 
@@ -145,8 +145,8 @@ describe('PrometheusMetricsService', () => {
       const output = service.render();
 
       expect(output).toContain('stellar_alerts_queue_depth_jobs');
-      expect(output).toContain('queue="notifications" 42');
-      expect(output).toContain('queue="webhooks" 15');
+      expect(output).toContain('queue="notifications"} 42');
+      expect(output).toContain('queue="webhooks"} 15');
     });
 
     it('should overwrite previous queue depth value', () => {
@@ -155,8 +155,8 @@ describe('PrometheusMetricsService', () => {
 
       const output = service.render();
 
-      expect(output).toContain('queue="notifications" 50');
-      expect(output).not.toContain('queue="notifications" 100');
+      expect(output).toContain('queue="notifications"} 50');
+      expect(output).not.toContain('queue="notifications"} 100');
     });
   });
 
@@ -187,9 +187,9 @@ describe('PrometheusMetricsService', () => {
       const output = service.render();
 
       expect(output).toContain('stellar_alerts_delivery_slo_success_rate');
-      expect(output).toContain('provider="webhook" 99.5');
-      expect(output).toContain('provider="telegram" 98.2');
-      expect(output).toContain('provider="email" 97');
+      expect(output).toContain('provider="webhook"} 99.5');
+      expect(output).toContain('provider="telegram"} 98.2');
+      expect(output).toContain('provider="email"} 97');
     });
 
     it('should track SLO rates 0-100', () => {
@@ -198,8 +198,8 @@ describe('PrometheusMetricsService', () => {
 
       const output = service.render();
 
-      expect(output).toContain('provider="webhook" 100');
-      expect(output).toContain('provider="telegram" 0');
+      expect(output).toContain('provider="webhook"} 100');
+      expect(output).toContain('provider="telegram"} 0');
     });
   });
 
@@ -292,7 +292,7 @@ describe('PrometheusMetricsService', () => {
 
       const output = service.render();
 
-      expect(output).toContain('_count 1');
+      expect(output).toContain('stellar_alerts_ledger_lag_seconds_count{source="horizon"} 1');
     });
   });
 
@@ -307,7 +307,7 @@ describe('PrometheusMetricsService', () => {
 
       const output = service.render();
 
-      expect(output).toContain('_count 100');
+      expect(output).toContain('stellar_alerts_ledger_lag_seconds_count{source="horizon"} 100');
       expect(output).toContain('_sum'); // Histogram sum
     });
   });

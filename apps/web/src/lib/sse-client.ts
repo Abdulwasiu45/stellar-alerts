@@ -46,53 +46,38 @@ export interface SorobanEvent {
   txHash: string;
 }
 
-export interface SorobanDecodedTopic {
-  symbol: string;
-  type: string;
-  value: unknown;
-  xdrBase64?: string;
-}
-
-export interface SorobanEvent {
-  id: string;
-  contractId: string;
-  ledgerSeq: number;
-  createdAt: string;
-  eventType: "contract" | "system" | "diagnostic";
-  topics: SorobanDecodedTopic[];
-  dataXdr: string;
-  decodedData: Record<string, unknown>;
-  txHash: string;
-}
-
-/**
- * Subscribes to real-time payment events from the Fastify SSE endpoint.
- *
- * @param onPayment  Callback invoked with each incoming payment event payload.
- *
- * Usage:
- *   const { connected } = usePaymentStream((payment) => {
- *     console.log('New payment:', payment);
- *   });
- */
-export function usePaymentStream(onPayment: (data: PaymentEvent) => void) {
+function useEventSourceStream<T>(
+  url: string,
+  eventName: string,
+  onEvent: (data: T) => void,
+  parseErrorLabel: string,
+) {
   const [connected, setConnected] = useState(false);
-  const onPaymentRef = useRef(onPayment);
+  const onEventRef = useRef(onEvent);
   const reconnectDelayRef = useRef(RECONNECT_BASE_MS);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const unmountedRef = useRef(false);
 
   // Keep the callback ref current so we don't need to re-subscribe when it changes
   useEffect(() => {
-    onPaymentRef.current = onPayment;
-  }, [onPayment]);
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   const connectRef = useRef<() => void>(() => {});
 
-  const connect = useCallback(() => {
-    if (unmountedRef.current) return;
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }, []);
 
-    const es = new EventSource(`${API_URL}/events`);
+  const connect = useCallback(() => {
+    if (unmountedRef.current || typeof EventSource === "undefined") return;
+    clearReconnectTimer();
+
+    const es = new EventSource(url);
     esRef.current = es;
 
     es.addEventListener("connected", () => {
@@ -101,12 +86,12 @@ export function usePaymentStream(onPayment: (data: PaymentEvent) => void) {
       reconnectDelayRef.current = RECONNECT_BASE_MS;
     });
 
-    es.addEventListener("payment", (event: MessageEvent) => {
+    es.addEventListener(eventName, (event: MessageEvent) => {
       try {
-        const data: PaymentEvent = JSON.parse(event.data);
-        onPaymentRef.current(data);
+        const data: T = JSON.parse(event.data);
+        onEventRef.current(data);
       } catch (err) {
-        console.warn("[SSE] Failed to parse payment event:", err);
+        console.warn(`[SSE] Failed to parse ${parseErrorLabel}:`, err);
       }
     });
 
@@ -120,11 +105,13 @@ export function usePaymentStream(onPayment: (data: PaymentEvent) => void) {
       const delay = reconnectDelayRef.current;
       reconnectDelayRef.current = Math.min(delay * 2, RECONNECT_MAX_MS);
 
-      setTimeout(() => {
+      clearReconnectTimer();
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
         connectRef.current();
       }, delay);
     };
-  }, []);
+  }, [clearReconnectTimer, eventName, parseErrorLabel, url]);
 
   useEffect(() => {
     connectRef.current = connect;
@@ -147,13 +134,33 @@ export function usePaymentStream(onPayment: (data: PaymentEvent) => void) {
 
     return () => {
       unmountedRef.current = true;
+      clearReconnectTimer();
       esRef.current?.close();
       esRef.current = null;
       setConnected(false);
     };
-  }, [connect]);
+  }, [clearReconnectTimer, connect]);
 
   return { connected };
+}
+
+/**
+ * Subscribes to real-time payment events from the Fastify SSE endpoint.
+ *
+ * @param onPayment  Callback invoked with each incoming payment event payload.
+ *
+ * Usage:
+ *   const { connected } = usePaymentStream((payment) => {
+ *     console.log('New payment:', payment);
+ *   });
+ */
+export function usePaymentStream(onPayment: (data: PaymentEvent) => void) {
+  return useEventSourceStream<PaymentEvent>(
+    `${API_URL}/events`,
+    "payment",
+    onPayment,
+    "payment event",
+  );
 }
 
 /**
@@ -171,85 +178,14 @@ export function useSorobanEventStream(
   onSorobanEvent: (data: SorobanEvent) => void,
   contractFilter?: string,
 ) {
-  const [connected, setConnected] = useState(false);
-  const onSorobanEventRef = useRef(onSorobanEvent);
-  const reconnectDelayRef = useRef(RECONNECT_BASE_MS);
-  const esRef = useRef<EventSource | null>(null);
-  const unmountedRef = useRef(false);
+  const url = contractFilter
+    ? `${API_URL}/events?contract=${encodeURIComponent(contractFilter)}`
+    : `${API_URL}/events`;
 
-  // Keep the callback ref current
-  useEffect(() => {
-    onSorobanEventRef.current = onSorobanEvent;
-  }, [onSorobanEvent]);
-
-  const connectRef = useRef<() => void>(() => {});
-
-  const connect = useCallback(() => {
-    if (unmountedRef.current) return;
-
-    const url = contractFilter
-      ? `${API_URL}/events?contract=${encodeURIComponent(contractFilter)}`
-      : `${API_URL}/events`;
-
-    const es = new EventSource(url);
-    esRef.current = es;
-
-    es.addEventListener("connected", () => {
-      setConnected(true);
-      reconnectDelayRef.current = RECONNECT_BASE_MS;
-    });
-
-    es.addEventListener("soroban", (event: MessageEvent) => {
-      try {
-        const data: SorobanEvent = JSON.parse(event.data);
-        onSorobanEventRef.current(data);
-      } catch (err) {
-        console.warn("[SSE] Failed to parse Soroban event:", err);
-      }
-    });
-
-    es.onerror = () => {
-      es.close();
-      esRef.current = null;
-      setConnected(false);
-
-      if (unmountedRef.current) return;
-
-      const delay = reconnectDelayRef.current;
-      reconnectDelayRef.current = Math.min(delay * 2, RECONNECT_MAX_MS);
-
-      setTimeout(() => {
-        connectRef.current();
-      }, delay);
-    };
-  }, [contractFilter]);
-
-  useEffect(() => {
-    connectRef.current = connect;
-  }, [connect]);
-
-  // Reconnect immediately when the offline banner requests it
-  useEffect(() => {
-    const handler = () => {
-      if (unmountedRef.current || esRef.current) return;
-      reconnectDelayRef.current = RECONNECT_BASE_MS;
-      connectRef.current();
-    };
-    window.addEventListener(SSE_RECONNECT_EVENT, handler);
-    return () => window.removeEventListener(SSE_RECONNECT_EVENT, handler);
-  }, []);
-
-  useEffect(() => {
-    unmountedRef.current = false;
-    connect();
-
-    return () => {
-      unmountedRef.current = true;
-      esRef.current?.close();
-      esRef.current = null;
-      setConnected(false);
-    };
-  }, [connect]);
-
-  return { connected };
+  return useEventSourceStream<SorobanEvent>(
+    url,
+    "soroban",
+    onSorobanEvent,
+    "Soroban event",
+  );
 }
