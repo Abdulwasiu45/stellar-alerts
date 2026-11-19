@@ -21,6 +21,7 @@ import { MemoryMonitor, MemorySnapshot } from '../utils/memory-monitor';
 import { appendPaymentChecksum } from '../services/checksumChain.service';
 import { createLogger } from '../lib/logger';
 import { outboxService } from '../modules/outbox/outbox.service';
+import { velocityAnomalyDetector } from '../modules/security/velocity-detector';
 import { WorkerLifecycleManager } from '../lib/worker-lifecycle';
 import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
@@ -302,6 +303,21 @@ export async function processPaymentRecord(
 
         if (wallet.userId) {
           await publishPaymentEvent(wallet.userId, payment);
+        }
+
+        // Dynamic Anomaly Detection for Flash Account Draining and Velocity Spikes (#931)
+        try {
+          await velocityAnomalyDetector.recordOutgoingTransfer({
+            accountId: fromAddress || wallet.publicKey,
+            amount: Number(amount),
+            txHash,
+            asset,
+            walletId: wallet.id,
+            userId: wallet.userId,
+            timestamp: receivedAt.getTime(),
+          });
+        } catch (velErr: any) {
+          log.warn({ err: velErr?.message, txHash }, 'Velocity anomaly detection evaluation skipped');
         }
 
         const alertJobPayload = {
