@@ -112,17 +112,24 @@ export function isBlockedIpv4(ip: string): { blocked: boolean; matchedCidr?: str
 export function isBlockedIpv6(ip: string): { blocked: boolean; matchedRange?: string } {
   const normalized = ip.toLowerCase().trim();
 
-  if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') {
-    return { blocked: true, matchedRange: '::1/128' };
-  }
-  if (normalized === '::' || normalized === '0:0:0:0:0:0:0:0') {
-    return { blocked: true, matchedRange: '::/128' };
-  }
-
   if (normalized.startsWith('::ffff:')) {
-    const v4Candidate = normalized.slice(7);
-    if (net.isIPv4(v4Candidate)) {
-      const v4Check = isBlockedIpv4(v4Candidate);
+    const tail = normalized.slice(7);
+    let v4: string | null = null;
+
+    if (net.isIPv4(tail)) {
+      v4 = tail; // dotted form: ::ffff:127.0.0.1
+    } else {
+      // hex form: ::ffff:7f00:1
+      const m = tail.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+      if (m) {
+        const hi = Number.parseInt(m[1], 16);
+        const lo = Number.parseInt(m[2], 16);
+        v4 = `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+      }
+    }
+
+    if (v4) {
+      const v4Check = isBlockedIpv4(v4);
       if (v4Check.blocked) {
         return { blocked: true, matchedRange: `::ffff:${v4Check.matchedCidr}` };
       }

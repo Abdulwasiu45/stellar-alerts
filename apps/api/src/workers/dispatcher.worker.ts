@@ -1,3 +1,4 @@
+import https from 'node:https';
 import { Worker, type ConnectionOptions } from 'bullmq';
 import { redis, registerRedisCleanupTask } from '../lib/redis';
 import { createLogger } from '../lib/logger';
@@ -75,19 +76,66 @@ export class DispatcherWorker {
     pinnedTarget?: PinnedWebhookTarget
   ) {
     const target = pinnedTarget ?? (await this.ssrfFilter.validateAndResolve(url));
-    const connectUrl = target.parsedUrl.protocol === 'http:' ? target.pinnedUrl : url;
-    const res = await fetch(connectUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Host: target.hostHeader,
-        'X-Validated-Egress-IP': target.pinnedIp,
-        ...headers,
-      },
-      body: payload,
-      redirect: 'manual',
+
+    if (target.parsedUrl.protocol === 'http:') {
+      const res = await fetch(target.pinnedUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Host: target.hostHeader,
+          'X-Validated-Egress-IP': target.pinnedIp,
+          ...headers,
+        },
+        body: payload,
+        redirect: 'manual',
+      });
+      return { status: res.status, body: await res.text() };
+    }
+
+    return this.postHttpsPinned(target, payload, headers);
+  }
+
+  /** HTTPS POST that connects ONLY to the already-validated IP (stops DNS rebinding). */
+  private postHttpsPinned(
+    target: PinnedWebhookTarget,
+    payload: string,
+    headers: Record<string, string>
+  ): Promise<{ status: number; body?: string }> {
+    return new Promise((resolve, reject) => {
+      const { parsedUrl, pinnedIp } = target;
+      const family = pinnedIp.includes(':') ? 6 : 4;
+
+      const req = https.request(
+        {
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || 443,
+          path: parsedUrl.pathname + parsedUrl.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            ...headers,
+          },
+          // Always connect to the validated IP, never re-resolve DNS.
+          lookup: (_host: string, opts: any, cb: any) => {
+            if (opts && opts.all) return cb(null, [{ address: pinnedIp, family }]);
+            return cb(null, pinnedIp, family);
+          },
+          timeout: 10000,
+        },
+        (res) => {
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => (body += chunk));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+        }
+      );
+
+      req.on('timeout', () => req.destroy(new Error('Webhook request timed out')));
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
     });
-    return { status: res.status, body: await res.text() };
   }
 
   /**
