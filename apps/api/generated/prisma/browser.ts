@@ -232,3 +232,8 @@ export type RefreshSession = Prisma.RefreshSessionModel
  * 
  */
 export type RefreshTokenHistory = Prisma.RefreshTokenHistoryModel
+/**
+ * Model ContractWasmAudit
+ * 
+ */
+export type ContractWasmAudit = Prisma.ContractWasmAuditModel

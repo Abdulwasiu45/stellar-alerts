@@ -93,7 +93,8 @@ export const ModelName = {
   DeadLetterAudit: 'DeadLetterAudit',
   MfaRecoveryCode: 'MfaRecoveryCode',
   RefreshSession: 'RefreshSession',
-  RefreshTokenHistory: 'RefreshTokenHistory'
+  RefreshTokenHistory: 'RefreshTokenHistory',
+  ContractWasmAudit: 'ContractWasmAudit'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -783,6 +784,25 @@ export const RefreshTokenHistoryScalarFieldEnum = {
 } as const
 
 export type RefreshTokenHistoryScalarFieldEnum = (typeof RefreshTokenHistoryScalarFieldEnum)[keyof typeof RefreshTokenHistoryScalarFieldEnum]
+
+
+export const ContractWasmAuditScalarFieldEnum = {
+  id: 'id',
+  contractId: 'contractId',
+  wasmHash: 'wasmHash',
+  byteSize: 'byteSize',
+  exportedFunctions: 'exportedFunctions',
+  isVerified: 'isVerified',
+  auditRegistry: 'auditRegistry',
+  sourceRepo: 'sourceRepo',
+  auditReportUrl: 'auditReportUrl',
+  verifiedAt: 'verifiedAt',
+  lastCheckedAt: 'lastCheckedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContractWasmAuditScalarFieldEnum = (typeof ContractWasmAuditScalarFieldEnum)[keyof typeof ContractWasmAuditScalarFieldEnum]
 
 
 export const SortOrder = {
