@@ -24,6 +24,11 @@ export interface DashboardData {
   applyLivePayment: (payment: PaymentDTO) => void;
   /** Drops cached reads and refetches the portfolio after a mutation. */
   refreshAfterMutation: () => void;
+  /** Persists wallet tags and color metadata, then refreshes cached reads. */
+  updateWalletMetadata: (
+    id: string,
+    metadata: { nickname?: string; colorHex?: string; tags?: string[] },
+  ) => Promise<void>;
   removeWallet: (id: string) => Promise<void>;
 }
 
@@ -75,6 +80,45 @@ export function useDashboardData(): DashboardData {
     setTotalVolumeXLM((prev) => prev + Number(payment.amount || 0));
   }, []);
 
+  const updateWalletMetadata = useCallback(
+    async (
+      id: string,
+      metadata: { nickname?: string; colorHex?: string; tags?: string[] },
+    ) => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/wallets/${id}/metadata`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: session?.accessToken ? `Bearer ${session.accessToken}` : '',
+          },
+          body: JSON.stringify(metadata),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to update wallet metadata (${res.status})`);
+        }
+
+        const data = (await res.json()) as { wallet?: WalletDTO & { metadata?: { colorHex?: string } } };
+        if (data.wallet) {
+          const colorHex = data.wallet.colorHex ?? data.wallet.metadata?.colorHex ?? null;
+          setWallets((prev) =>
+            prev.map((wallet) =>
+              wallet.id === id
+                ? { ...wallet, ...data.wallet, colorHex, tags: data.wallet?.tags ?? [] }
+                : wallet,
+            ),
+          );
+        }
+        refreshAfterMutation();
+      } catch (err) {
+        console.error('Failed to update wallet metadata:', err);
+        throw err;
+      }
+    },
+    [session, refreshAfterMutation],
+  );
+
   const removeWallet = useCallback(
     async (id: string) => {
       try {
@@ -107,6 +151,7 @@ export function useDashboardData(): DashboardData {
     totalVolumeXLM: totalVolumeXLM || payments.reduce((acc, p) => acc + Number(p.amount || 0), 0),
     applyLivePayment,
     refreshAfterMutation,
+    updateWalletMetadata,
     removeWallet,
   };
 }

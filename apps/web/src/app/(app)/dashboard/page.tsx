@@ -20,9 +20,11 @@ import {
   EmailTemplatePreview,
   SankeyFlowDiagram,
 } from '@/components/dashboard';
+import { FilterChips } from '@/components/alerts/FilterChips';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { useLiveDashboardStream } from '@/hooks/useLiveDashboardStream';
 import { useEmailTemplatePreference } from '@/hooks/useEmailTemplatePreference';
+import { useTagFilters } from '@/hooks/useTagFilters';
 import { CurrencyPreferenceProvider } from '@/components/dashboard/CurrencyPreference';
 
 // Multi-hop path payment routes. The ingestion worker does not yet record
@@ -43,6 +45,7 @@ export default function DashboardPage() {
     totalVolumeXLM,
     applyLivePayment,
     refreshAfterMutation,
+    updateWalletMetadata,
     removeWallet,
   } = useDashboardData();
   const { isStreamConnected, latestDelivery } = useLiveDashboardStream(
@@ -54,6 +57,11 @@ export default function DashboardPage() {
     template: savedEmailTemplate,
     saveTemplate: saveEmailTemplate,
   } = useEmailTemplatePreference(session?.accessToken);
+
+  const { selectedTags, filterTags, visiblePayments, toggleTag, clearTags } = useTagFilters(
+    wallets,
+    payments,
+  );
 
   // The Add Wallet flow is the watcher form below the grid, not a modal, so
   // "open it" means scroll it into view and put the cursor in its first field.
@@ -76,6 +84,23 @@ export default function DashboardPage() {
         <EmptyWatchersState walletCount={wallets.length} onAddWallet={openAddWalletForm} />
       )}
 
+      {filterTags.length > 0 ? (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-200">Filter by wallet tag</h2>
+            <span className="text-xs text-slate-400">
+              {visiblePayments.length} matching {visiblePayments.length === 1 ? 'alert' : 'alerts'}
+            </span>
+          </div>
+          <FilterChips
+            tags={filterTags}
+            selectedTags={selectedTags}
+            onToggle={toggleTag}
+            onClear={clearTags}
+          />
+        </div>
+      ) : null}
+
       {/* Customizable Dashboard Grid */}
       <DashboardGrid
         items={[
@@ -95,7 +120,7 @@ export default function DashboardPage() {
             label: 'Currency Volume',
             content: (
               <VolumeChart
-                payments={payments}
+                payments={visiblePayments}
                 totalVolumeXLM={totalVolumeXLM}
               />
             ),
@@ -103,7 +128,7 @@ export default function DashboardPage() {
           {
             id: 'activity-heatmap',
             label: 'Activity Heatmap',
-            content: <ActivityHeatmap payments={payments} />,
+            content: <ActivityHeatmap payments={visiblePayments} />,
           },
           {
             id: 'email-template-preview',
@@ -134,6 +159,7 @@ export default function DashboardPage() {
                       onSelectWallet={setSelectedWalletId}
                       onRemoveWallet={removeWallet}
                       onOpenAddModal={openAddWalletForm}
+                      onUpdateWalletMetadata={updateWalletMetadata}
                     />
                   ),
                 },
@@ -148,7 +174,7 @@ export default function DashboardPage() {
                   <WatcherForm onWalletAdded={refreshAfterMutation} isStreamConnected={isStreamConnected} />
                 </div>
                 <div className="min-w-0 lg:col-span-8">
-                  <PaymentTable payments={payments} isLoading={isLoadingPayments} />
+                  <PaymentTable payments={visiblePayments} isLoading={isLoadingPayments} />
                 </div>
               </div>
             ),
@@ -156,7 +182,7 @@ export default function DashboardPage() {
           {
             id: 'network-visualizer',
             label: 'Live Payment Stream Network',
-            content: <NetworkVisualizer3D payments={payments} />,
+            content: <NetworkVisualizer3D payments={visiblePayments} />,
           },
           {
             id: 'audit-workspace',

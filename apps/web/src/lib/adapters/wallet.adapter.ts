@@ -37,6 +37,25 @@ export class WalletAdapter extends ApiAdapter {
     return walletDTOSchema.parse(response.wallet);
   }
 
+  async updateWalletTags(walletId: string, tags: string[]): Promise<WalletDTO> {
+    const response = await this.patch<{ success: boolean; wallet: WalletDTO }>(
+      `/wallets/${walletId}/tags`,
+      { tags },
+    );
+    return walletDTOSchema.parse(response.wallet);
+  }
+
+  async updateWalletMetadata(
+    walletId: string,
+    metadata: { nickname?: string; colorHex?: string; tags?: string[] },
+  ): Promise<WalletDTO> {
+    const response = await this.patch<{ success: boolean; wallet: WalletDTO }>(
+      `/wallets/${walletId}/metadata`,
+      metadata,
+    );
+    return walletDTOSchema.parse(response.wallet);
+  }
+
   async deleteWallet(walletId: string): Promise<void> {
     await this.delete(`/wallets/${walletId}`);
   }

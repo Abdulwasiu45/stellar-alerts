@@ -1,8 +1,10 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { Job } from 'bullmq';
 
-const { MockQueueAdd, MockQueueEventsOn, MockWorker } = vi.hoisted(() => ({
+const { MockQueueAdd, MockQueueGetFailed, MockQueueGetJobs, MockQueueEventsOn, MockWorker } = vi.hoisted(() => ({
   MockQueueAdd: vi.fn().mockResolvedValue(true),
+  MockQueueGetFailed: vi.fn().mockResolvedValue([]),
+  MockQueueGetJobs: vi.fn().mockResolvedValue([]),
   MockQueueEventsOn: vi.fn(),
   MockWorker: vi.fn(function() {}),
 }));
@@ -41,7 +43,7 @@ vi.mock('./redis', async () => {
 vi.mock('bullmq', () => {
   return {
     Queue: vi.fn(function() {
-      return { add: MockQueueAdd };
+      return { add: MockQueueAdd, getFailed: MockQueueGetFailed, getJobs: MockQueueGetJobs };
     }),
     QueueEvents: vi.fn(function() {
       return { on: MockQueueEventsOn };
@@ -131,7 +133,7 @@ vi.mock('resend', () => {
   };
 });
 
-import { alertQueue, dlqQueue, paymentAlertWorkerProcessor, failedJobHandler, createRedisConnectionConfig } from './queue';
+import { alertQueue, dlqQueue, paymentAlertWorkerProcessor, failedJobHandler, createRedisConnectionConfig, purgeDlqJobs, retryDlqJobs } from './queue';
 import { prisma } from './prisma';
 import { dispatchWhatsAppAlert } from '../utils/whatsapp';
 import { dispatchDiscordAlert } from '../utils/discord';
@@ -183,6 +185,71 @@ describe('Queue DLQ routing', () => {
 
     expect(MockQueueAdd).not.toHaveBeenCalled();
     expect(prisma.deadLetter.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('DLQ administrative helpers (#888)', () => {
+  it('retries a selected failed job and removes its DLQ copy', async () => {
+    const retry = vi.fn().mockResolvedValue(undefined);
+    const removeDlqCopy = vi.fn().mockResolvedValue(undefined);
+    (Job.fromId as any).mockImplementation(async (queue: any, id: string) => {
+      if (queue === alertQueue && id === 'job-1') return { id, retry };
+      if (queue === dlqQueue && id === 'dlq-job-1') {
+        return { id, data: { txHash: 'selected-tx' }, remove: removeDlqCopy };
+      }
+      return null;
+    });
+
+    const result = await retryDlqJobs({ ids: ['job-1'] });
+
+    expect(retry).toHaveBeenCalledOnce();
+    expect(removeDlqCopy).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ retriedCount: 1, failedCount: 0, retriedIds: ['job-1'] });
+  });
+
+  it('bulk retries failed jobs and waiting DLQ copies with payload preserved', async () => {
+    const retry = vi.fn().mockResolvedValue(undefined);
+    const dlqPayload = { txHash: 'dlq-tx', paymentId: 'pay-dlq' };
+    const removeDlqJob = vi.fn().mockResolvedValue(undefined);
+    MockQueueGetFailed.mockResolvedValue([{ id: 'job-2', retry }]);
+    MockQueueGetJobs.mockResolvedValue([{ id: 'dlq-job-3', data: dlqPayload, remove: removeDlqJob }]);
+
+    const result = await retryDlqJobs({ limit: 10 });
+
+    expect(retry).toHaveBeenCalledOnce();
+    expect(MockQueueAdd).toHaveBeenCalledWith(
+      'dispatch-alert',
+      dlqPayload,
+      expect.objectContaining({ jobId: expect.stringContaining('retry-dlq-job-3-') }),
+    );
+    expect(removeDlqJob).toHaveBeenCalledOnce();
+    expect(result.retriedCount).toBe(2);
+  });
+
+  it('purges only jobs inside the requested date range', async () => {
+    const oldTimestamp = Date.now() - 48 * 60 * 60 * 1000;
+    const recentTimestamp = Date.now();
+    const removeOld = vi.fn().mockResolvedValue(undefined);
+    const removeRecent = vi.fn().mockResolvedValue(undefined);
+    const removeDlqOld = vi.fn().mockResolvedValue(undefined);
+    MockQueueGetFailed.mockResolvedValue([
+      { id: 'old-job', timestamp: oldTimestamp, remove: removeOld },
+      { id: 'recent-job', timestamp: recentTimestamp, remove: removeRecent },
+    ]);
+    MockQueueGetJobs.mockResolvedValue([
+      { id: 'dlq-old-job', timestamp: oldTimestamp, remove: removeDlqOld },
+    ]);
+
+    const result = await purgeDlqJobs({ olderThanDays: 1 });
+
+    expect(removeOld).toHaveBeenCalledOnce();
+    expect(removeDlqOld).toHaveBeenCalledOnce();
+    expect(removeRecent).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true, purgedCount: 2 });
+  });
+
+  it('requires a date range for purge', async () => {
+    await expect(purgeDlqJobs()).rejects.toThrow('Must specify a date range for DLQ purge');
   });
 });
 

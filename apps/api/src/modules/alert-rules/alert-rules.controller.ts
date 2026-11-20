@@ -1,8 +1,50 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { alertRuleRepository } from '../../repositories/alert-rule.repository';
 import { AuthenticationError, NotFoundError, ValidationError } from '../../lib/errors';
+import { rulesService, type ListRulePresetsQuery } from '../rules/rules.service';
+import type { AmmNetwork, AmmProtocol, AmmRulePreset } from '../rules/presets/amm-presets';
+
+const PROTOCOLS: readonly AmmProtocol[] = ['soroswap', 'phoenix', 'aqua'];
+const NETWORKS: readonly AmmNetwork[] = ['mainnet', 'testnet'];
+const EVENT_KINDS: readonly AmmRulePreset['eventKind'][] = [
+  'swap',
+  'liquidityDeposit',
+  'liquidityWithdrawal',
+  'poolCreated',
+];
 
 export class AlertRulesController {
+  async getPresets(request: FastifyRequest, reply: FastifyReply) {
+    const query = (request.query ?? {}) as Record<string, unknown>;
+    const filter: ListRulePresetsQuery = {};
+
+    if (query.protocol !== undefined) {
+      if (typeof query.protocol !== 'string' || !PROTOCOLS.includes(query.protocol as AmmProtocol)) {
+        throw new ValidationError('Invalid protocol filter');
+      }
+      filter.protocol = query.protocol as AmmProtocol;
+    }
+
+    if (query.network !== undefined) {
+      if (typeof query.network !== 'string' || !NETWORKS.includes(query.network as AmmNetwork)) {
+        throw new ValidationError('Invalid network filter');
+      }
+      filter.network = query.network as AmmNetwork;
+    }
+
+    if (query.eventKind !== undefined) {
+      if (typeof query.eventKind !== 'string' || !EVENT_KINDS.includes(query.eventKind as AmmRulePreset['eventKind'])) {
+        throw new ValidationError('Invalid eventKind filter');
+      }
+      filter.eventKind = query.eventKind as AmmRulePreset['eventKind'];
+    }
+
+    return reply.send({
+      success: true,
+      presets: rulesService.listPresets(filter),
+    });
+  }
+
   async createRule(request: FastifyRequest, reply: FastifyReply) {
     if (!request.user) {
       throw new AuthenticationError('User not authenticated');

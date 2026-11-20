@@ -50,6 +50,13 @@ export class ApiAdapter {
     });
   }
 
+  async patch<T>(endpoint: string, body: unknown): Promise<T> {
+    return this.fetch<T>(endpoint, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     return this.fetch<T>(endpoint, { method: 'DELETE' });
   }

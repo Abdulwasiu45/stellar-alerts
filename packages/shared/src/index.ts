@@ -24,12 +24,17 @@ export const userDTOSchema = z
   .passthrough();
 export type UserDTO = z.infer<typeof userDTOSchema>;
 
+export const walletTagSchema = z.string().trim().min(1).max(50);
+
 export const walletDTOSchema = z
   .object({
     id: z.string(),
     userId: z.string(),
     publicKey: z.string(),
     label: z.string().nullable().optional(),
+    nickname: z.string().nullable().optional(),
+    colorHex: z.string().nullable().optional(),
+    tags: z.array(walletTagSchema).optional(),
     createdAt: dateDTO,
   })
   .passthrough();

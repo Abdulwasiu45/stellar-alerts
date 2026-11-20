@@ -3,6 +3,12 @@ import { alertRulesController } from './alert-rules.controller';
 import { authenticate, requireScopes } from '../../middleware/rbac.middleware';
 
 export async function alertRulesRoutes(app: FastifyInstance) {
+  app.get(
+    '/rules/presets',
+    { preHandler: [authenticate, requireScopes('alerts:write')] },
+    alertRulesController.getPresets.bind(alertRulesController)
+  );
+
   app.post(
     '/alert-rules',
     { preHandler: [authenticate, requireScopes('alerts:write')] },
