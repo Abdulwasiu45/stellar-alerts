@@ -96,7 +96,7 @@ export async function unlockAudioContext(): Promise<boolean> {
   if (ctx.state === 'suspended') {
     try {
       await ctx.resume();
-      return ctx.state === 'running';
+      return (ctx.state as string) === 'running';
     } catch {
       return false;
     }

@@ -346,7 +346,7 @@ export const SorobanEventInspector: React.FC<SorobanEventInspectorProps> = ({
                   Topics ({unpackedTopics.length})
                 </span>
                 <div className="bg-slate-900/40 p-2 rounded-lg border border-slate-800 flex flex-col gap-1">
-                  {unpackedTopics.map((topicNode, idx) => (
+                  {unpackedTopics.map((topicNode: any, idx: number) => (
                     <TreeNode
                       key={`topic-${idx}`}
                       label={`topic[${idx}]`}

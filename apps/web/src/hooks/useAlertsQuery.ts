@@ -172,29 +172,33 @@ export function useAlertsQuery(options: UseAlertsQueryOptions = {}): UseAlertsQu
         ? lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : 'Never';
 
-      return (
-        <div
-          data-testid="offline-sync-pill"
-          className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-md border transition-all ${
+      return React.createElement(
+        'div',
+        {
+          'data-testid': 'offline-sync-pill',
+          className: `inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-md border transition-all ${
             isOffline
               ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
               : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-          } ${className}`}
-        >
-          <span
-            className={`w-2 h-2 rounded-full ${
-              isOffline ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
-            }`}
-          />
-          <span>
-            {isOffline ? 'Offline' : 'Online'} • Cached {formattedTime}
-          </span>
-          {pendingRulesCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-[10px] font-mono text-white">
-              {pendingRulesCount} queued
-            </span>
-          )}
-        </div>
+          } ${className}`,
+        },
+        React.createElement('span', {
+          className: `w-2 h-2 rounded-full ${
+            isOffline ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+          }`,
+        }),
+        React.createElement(
+          'span',
+          null,
+          `${isOffline ? 'Offline' : 'Online'} • Cached ${formattedTime}`,
+        ),
+        pendingRulesCount > 0
+          ? React.createElement(
+              'span',
+              { className: 'px-1.5 py-0.2 rounded-md bg-white/10 text-[10px] font-mono text-white' },
+              `${pendingRulesCount} queued`,
+            )
+          : null,
       );
     };
   }, [isOffline, lastSyncTime, pendingRulesCount]);

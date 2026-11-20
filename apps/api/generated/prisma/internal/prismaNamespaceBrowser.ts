@@ -87,12 +87,14 @@ export const ModelName = {
   SecurityAuditLog: 'SecurityAuditLog',
   NotificationDelivery: 'NotificationDelivery',
   NotificationDeliveryAttempt: 'NotificationDeliveryAttempt',
+  DeduplicationLog: 'DeduplicationLog',
   DeadLetter: 'DeadLetter',
   WebhookSandboxReplay: 'WebhookSandboxReplay',
   DeadLetterAudit: 'DeadLetterAudit',
   MfaRecoveryCode: 'MfaRecoveryCode',
   RefreshSession: 'RefreshSession',
-  RefreshTokenHistory: 'RefreshTokenHistory'
+  RefreshTokenHistory: 'RefreshTokenHistory',
+  ContractWasmAudit: 'ContractWasmAudit'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -673,6 +675,17 @@ export const NotificationDeliveryAttemptScalarFieldEnum = {
 export type NotificationDeliveryAttemptScalarFieldEnum = (typeof NotificationDeliveryAttemptScalarFieldEnum)[keyof typeof NotificationDeliveryAttemptScalarFieldEnum]
 
 
+export const DeduplicationLogScalarFieldEnum = {
+  txHash: 'txHash',
+  operationIndex: 'operationIndex',
+  eventHash: 'eventHash',
+  detectedAt: 'detectedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type DeduplicationLogScalarFieldEnum = (typeof DeduplicationLogScalarFieldEnum)[keyof typeof DeduplicationLogScalarFieldEnum]
+
+
 export const DeadLetterScalarFieldEnum = {
   id: 'id',
   deliveryKey: 'deliveryKey',
@@ -771,6 +784,25 @@ export const RefreshTokenHistoryScalarFieldEnum = {
 } as const
 
 export type RefreshTokenHistoryScalarFieldEnum = (typeof RefreshTokenHistoryScalarFieldEnum)[keyof typeof RefreshTokenHistoryScalarFieldEnum]
+
+
+export const ContractWasmAuditScalarFieldEnum = {
+  id: 'id',
+  contractId: 'contractId',
+  wasmHash: 'wasmHash',
+  byteSize: 'byteSize',
+  exportedFunctions: 'exportedFunctions',
+  isVerified: 'isVerified',
+  auditRegistry: 'auditRegistry',
+  sourceRepo: 'sourceRepo',
+  auditReportUrl: 'auditReportUrl',
+  verifiedAt: 'verifiedAt',
+  lastCheckedAt: 'lastCheckedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContractWasmAuditScalarFieldEnum = (typeof ContractWasmAuditScalarFieldEnum)[keyof typeof ContractWasmAuditScalarFieldEnum]
 
 
 export const SortOrder = {

@@ -453,7 +453,7 @@ export const VisualRuleBuilder: React.FC<VisualRuleBuilderProps> = ({
             return (
               <ConditionBlock
                 key={child.id}
-                condition={child}
+                condition={child as RuleCondition}
                 index={index}
                 groupId={group.id}
                 isDragging={draggingId === child.id}

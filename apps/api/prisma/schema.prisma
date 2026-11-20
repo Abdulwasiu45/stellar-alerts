@@ -955,3 +955,23 @@ model RefreshTokenHistory {
   @@index([userId])
 }
 
+model ContractWasmAudit {
+  id                String    @id @default(cuid())
+  contractId        String    @unique
+  wasmHash          String
+  byteSize          Int
+  exportedFunctions Json
+  isVerified        Boolean   @default(false)
+  auditRegistry     String?
+  sourceRepo        String?
+  auditReportUrl    String?
+  verifiedAt        DateTime?
+  lastCheckedAt     DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([wasmHash])
+  @@index([isVerified])
+  @@index([lastCheckedAt])
+}
+

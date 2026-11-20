@@ -12,6 +12,8 @@ export * from './soroban/scval-parser';
 // (Ed25519 public keys, contract IDs, muxed addresses, transaction hashes).
 export * from './strkey';
 export * from './schemas/vesting';
+export * from './schemas/defi';
+export * from './schemas/alerts';
 
 const dateDTO = z.union([z.date(), z.string()]);
 
