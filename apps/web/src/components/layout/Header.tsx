@@ -1,0 +1,133 @@
+'use client';
+
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { ShortcutsModal } from '@/components/common/ShortcutsModal';
+
+export interface HeaderProps {
+  onOpenCommandPalette?: () => void;
+  onOpenNotifications?: () => void;
+  onOpenMobileNav?: () => void;
+  isMobileNavOpen?: boolean;
+}
+
+export const NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', match: '/dashboard' },
+  { href: '/dashboard/rules/new', label: 'Rule Builder', match: '/dashboard/rules' },
+  { href: '/dashboard/triage/INC-84920', label: 'Incident Triage', match: '/dashboard/triage' },
+  { href: '/inspectors', label: 'Inspectors', match: '/inspectors' },
+  { href: '/soroban', label: 'Soroban Inspector', match: '/soroban' },
+  { href: '/onboarding', label: 'Onboarding', match: '/onboarding' },
+  { href: '/settings', label: 'Settings', match: '/settings' },
+  { href: '/docs', label: 'Docs', match: '/docs' },
+];
+
+export const Header: React.FC<HeaderProps> = ({
+  onOpenCommandPalette,
+  onOpenNotifications,
+  onOpenMobileNav,
+  isMobileNavOpen = false,
+}) => {
+  const pathname = usePathname();
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+
+  return (
+    <>
+      <header className="sticky top-0 z-50 bg-[#07070c]/70 backdrop-blur-xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.3)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 group cursor-pointer min-w-0">
+            <Link href="/dashboard" className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-[0_0_25px_rgba(6,182,212,0.4)] group-hover:scale-105 transition-transform duration-300">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <span className="hidden sm:inline text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-100 to-gray-400">
+                Stellar<span className="text-cyan-400">Alerts</span>
+              </span>
+            </Link>
+
+            <nav className="hidden lg:flex items-center gap-1 ml-6">
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`px-3.5 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer ${
+                    pathname?.startsWith(item.match)
+                      ? 'bg-white/10 text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                  data-testid={`nav-${item.match.slice(1)}`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+
+            <button
+              type="button"
+              aria-label="Open navigation menu"
+              aria-expanded={isMobileNavOpen}
+              aria-controls="mobile-navigation-drawer"
+              onClick={onOpenMobileNav}
+              className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-colors cursor-pointer"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <button
+              type="button"
+              onClick={onOpenCommandPalette}
+              aria-label="Search commands"
+              title="Search commands (⌘K)"
+              className="px-2 sm:px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-gray-300 flex items-center gap-2 transition-colors cursor-pointer hover:border-cyan-500/40"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+              </svg>
+              <span className="hidden sm:inline">Search</span>
+              <kbd className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-gray-400">
+                ⌘K
+              </kbd>
+            </button>
+
+            {/* Keyboard Shortcuts Trigger Button */}
+            <button
+              type="button"
+              onClick={() => setIsShortcutsOpen(true)}
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              data-testid="shortcuts-modal-trigger"
+              className="px-2 sm:px-3 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-gray-300 flex items-center gap-1.5 transition-colors cursor-pointer hover:border-cyan-500/40"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-gray-400">
+                ?
+              </kbd>
+            </button>
+
+            {onOpenNotifications && (
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                className="hidden sm:flex px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-gray-300 items-center gap-2 transition-colors cursor-pointer hover:border-cyan-500/40"
+              >
+                <span className="text-sm leading-none">🔔</span> Alert Settings
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Global Shortcuts Modal */}
+      <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+    </>
+  );
+};

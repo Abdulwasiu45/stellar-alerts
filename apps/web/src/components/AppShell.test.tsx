@@ -115,4 +115,33 @@ describe('AppShell mobile navigation', () => {
     expect(screen.queryByLabelText('Mobile navigation')).not.toBeInTheDocument();
     expect(document.body.style.overflow).toBe('');
   });
+
+  it('opens and closes the keyboard shortcuts modal via header button and Escape', () => {
+    render(
+      <AppShell>
+        <div>Dashboard content</div>
+      </AppShell>,
+    );
+
+    expect(screen.queryByTestId('shortcuts-modal')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('shortcuts-modal-trigger'));
+    expect(screen.getByTestId('shortcuts-modal')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('shortcuts-modal')).not.toBeInTheDocument();
+  });
+
+  it('opens the keyboard shortcuts modal on pressing ? key', () => {
+    render(
+      <AppShell>
+        <div>Dashboard content</div>
+      </AppShell>,
+    );
+
+    expect(screen.queryByTestId('shortcuts-modal')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: '?' });
+    expect(screen.getByTestId('shortcuts-modal')).toBeInTheDocument();
+  });
 });
