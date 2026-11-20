@@ -109,7 +109,11 @@ model Payment {
   id          String   @id @default(cuid())
   walletId    String
   wallet      Wallet   @relation(fields: [walletId], references: [id])
-  txHash      String   @unique
+  // NOTE: Monthly range partitioning on receivedAt is applied at the SQL
+  // layer (see docs/DATABASE_PARTITIONING.md). Prisma does not model
+  // declarative partitioning, so txHash uniqueness is enforced per-partition
+  // by the partition migration (unique index includes receivedAt).
+  txHash      String
   fromAddress String
   amount      Decimal
   asset       String
@@ -126,6 +130,8 @@ model Payment {
   @@index([asset])
   @@index([walletId, receivedAt])
   @@index([createdAt])
+  @@index([receivedAt])
+  @@index([txHash])
 }
 
 // Cold storage for payments older than 90 days, partitioned for archival

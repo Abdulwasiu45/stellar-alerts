@@ -8,22 +8,35 @@ import { prisma } from "../../lib/prisma";
  */
 export class PartitionService {
   /**
-   * Creates monthly range partitions for the Payment table.
-   * Currently tracks partition metadata; actual DDL requires DB migration.
+   * Ensures monthly range partitions exist for the Payment table for the
+   * current month and the next 3 months. Partitions are created via real DDL
+   * using CREATE TABLE IF NOT EXISTS ... PARTITION OF, so this is idempotent.
    */
   async ensureMonthlyPartitions(): Promise<void> {
-    // Get the current month and the next 3 months to stay ahead
     const now = new Date();
-    const months: string[] = [];
 
     for (let i = 0; i < 4; i++) {
-      const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      months.push(this.formatMonthPartition(date));
+      const start = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      await this.createMonthPartition(start);
     }
+  }
 
-    console.log(
-      `[PartitionService] Ensuring partitions for months: ${months.join(", ")}`,
+  /**
+   * Creates the monthly partition covering the month of `start` if it does not
+   * already exist. Range is [start of month, start of next month).
+   */
+  async createMonthPartition(start: Date): Promise<string> {
+    const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    const partitionName = `Payment_${this.formatMonthPartition(start)}`;
+    const from = this.formatDate(start);
+    const to = this.formatDate(end);
+
+    await prisma.$executeRawUnsafe(
+      `CREATE TABLE IF NOT EXISTS "${partitionName}" PARTITION OF "Payment" ` +
+        `FOR VALUES FROM ('${from}') TO ('${to}')`,
     );
+
+    return partitionName;
   }
 
   /**
@@ -156,6 +169,16 @@ export class PartitionService {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     return `${year}_${month}`;
+  }
+
+  /**
+   * Helper: format date as YYYY-MM-DD for SQL partition bounds
+   */
+  private formatDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 }
 
