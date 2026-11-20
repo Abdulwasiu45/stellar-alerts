@@ -31,6 +31,7 @@ import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
 import { deduplicationPipeline } from '../lib/deduplicator';
 import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
 import { flashLoanDetector } from '../modules/soroban/flash-loan-detector';
+import { contractGovernanceSentinel } from '../modules/soroban/governance-sentinel.service';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -1301,6 +1302,13 @@ export async function inspectTransactionForFlashLoans(input: {
   events?: any[];
 }) {
   return flashLoanDetector.analyzeTransaction(input);
+}
+
+/**
+ * Contract governance & authority sentinel monitor (#899).
+ */
+export async function inspectContractGovernance(event: any) {
+  return contractGovernanceSentinel.parseGovernanceEvent(event);
 }
 
 export interface WatcherShutdownResources {
