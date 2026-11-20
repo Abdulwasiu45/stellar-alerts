@@ -13,6 +13,7 @@ export * from './soroban/scval-parser';
 export * from './strkey';
 export * from './schemas/vesting';
 export * from './schemas/defi';
+export * from './schemas/alerts';
 
 const dateDTO = z.union([z.date(), z.string()]);
 

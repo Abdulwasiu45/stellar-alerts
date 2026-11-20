@@ -30,6 +30,7 @@ import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
 import { deduplicationPipeline } from '../lib/deduplicator';
 import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
+import { flashLoanDetector } from '../modules/soroban/flash-loan-detector';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -1287,6 +1288,19 @@ export async function inspectSorobanApproval(
   const parsed = allowanceSentinelService.parseApprovalEvent(rawEvent, tokenContractId);
   if (!parsed) return null;
   return allowanceSentinelService.inspectApproval(parsed);
+}
+
+/**
+ * Real-time transaction flash loan detection engine (#897).
+ */
+export async function inspectTransactionForFlashLoans(input: {
+  txHash: string;
+  ledgerSeq: number;
+  invocations?: any[];
+  operations?: any[];
+  events?: any[];
+}) {
+  return flashLoanDetector.analyzeTransaction(input);
 }
 
 export interface WatcherShutdownResources {
