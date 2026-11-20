@@ -46,6 +46,7 @@
     "verify:migrations:dry-run": "npx tsx scripts/verify-migrations.ts --dry-run",
     "release:report": "npx tsx scripts/release-report.ts",
     "release:report:check": "npx tsx scripts/release-report.ts --check",
+    "commit": "cz",
     "prepare": "husky"
   },
   "packageManager": "npm@10.8.2",
@@ -55,7 +56,16 @@
   "dependencies": {
     "@prisma/client": "^6.19.3"
   },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "commitizen": "^4.3.2",
+    "cz-conventional-changelog": "^3.3.0",
     "eslint": "^9.39.5",
     "husky": "^9.1.7",
     "lint-staged": "^17.4.1",
