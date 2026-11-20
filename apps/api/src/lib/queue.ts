@@ -704,6 +704,200 @@ export async function failedJobHandler({ jobId, failedReason }: { jobId?: string
   }
 }
 
+export interface DlqRetryOptions {
+  ids?: string[];
+  limit?: number;
+}
+
+export interface DlqPurgeOptions {
+  after?: Date | string;
+  before?: Date | string;
+  olderThanDays?: number;
+  limit?: number;
+}
+
+function normalizeDlqLimit(limit: number | undefined, fallback: number): number {
+  if (limit === undefined) return fallback;
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error('limit must be a positive integer');
+  }
+  return Math.min(limit, 1000);
+}
+
+function parseDlqDate(value: Date | string | undefined, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`Invalid ${field} date`);
+  }
+  return timestamp;
+}
+
+function dlqOriginalJobId(jobId: string | undefined): string | undefined {
+  if (!jobId) return undefined;
+  return jobId.startsWith('dlq-') ? jobId.slice(4) : jobId;
+}
+
+export async function retryDlqJobs(options: DlqRetryOptions = {}) {
+  if (!alertQueue && !dlqQueue) {
+    throw new Error('DLQ queues are unavailable');
+  }
+
+  const limit = normalizeDlqLimit(options.limit, 100);
+  const retriedIds: string[] = [];
+  const failedIds: string[] = [];
+  const requestedIds = options.ids?.map((id) => dlqOriginalJobId(id)).filter(Boolean) as string[];
+
+  if (requestedIds && requestedIds.length > 0) {
+    for (const id of requestedIds.slice(0, limit)) {
+      try {
+        let retried = false;
+
+        if (alertQueue) {
+          const job = await Job.fromId(alertQueue, id);
+          if (job) {
+            await job.retry();
+            retried = true;
+          }
+        }
+
+        if (!retried && dlqQueue) {
+          const dlqJob =
+            (await Job.fromId(dlqQueue, `dlq-${id}`)) ??
+            (await Job.fromId(dlqQueue, id));
+          if (!dlqJob || !alertQueue) {
+            failedIds.push(id);
+            continue;
+          }
+
+          await alertQueue.add('dispatch-alert', dlqJob.data, {
+            jobId: `retry-${id}-${Date.now()}`,
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 2000 },
+          });
+          await dlqJob.remove();
+          retried = true;
+        }
+
+        if (dlqQueue) {
+          const dlqCopy = await Job.fromId(dlqQueue, `dlq-${id}`);
+          if (dlqCopy) await dlqCopy.remove();
+        }
+
+        if (retried) {
+          retriedIds.push(id);
+        } else {
+          failedIds.push(id);
+        }
+      } catch (err: any) {
+        queueLog.warn({ id, err: err?.message }, 'Failed to retry DLQ job');
+        failedIds.push(id);
+      }
+    }
+
+    return {
+      success: failedIds.length === 0,
+      retriedCount: retriedIds.length,
+      failedCount: failedIds.length,
+      retriedIds,
+      failedIds,
+    };
+  }
+
+  const failedJobs = alertQueue ? await alertQueue.getFailed(0, limit - 1) : [];
+  const retriedOriginalIds = new Set<string>();
+
+  for (const job of failedJobs) {
+    try {
+      await job.retry();
+      if (job.id) retriedOriginalIds.add(job.id);
+      retriedIds.push(job.id ?? 'unknown');
+    } catch (err: any) {
+      queueLog.warn({ id: job.id, err: err?.message }, 'Failed to retry alert job');
+      failedIds.push(job.id ?? 'unknown');
+    }
+  }
+
+  if (dlqQueue) {
+    const dlqJobs = await dlqQueue.getJobs(['waiting', 'delayed', 'failed'], 0, limit - 1);
+    for (const job of dlqJobs) {
+      const originalId = dlqOriginalJobId(job.id);
+      try {
+        if (originalId && retriedOriginalIds.has(originalId)) {
+          await job.remove();
+          continue;
+        }
+
+        if (!alertQueue) {
+          failedIds.push(job.id ?? 'unknown');
+          continue;
+        }
+
+        await alertQueue.add('dispatch-alert', job.data, {
+          jobId: `retry-${job.id}-${Date.now()}`,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 2000 },
+        });
+        await job.remove();
+        retriedIds.push(job.id ?? 'unknown');
+      } catch (err: any) {
+        queueLog.warn({ id: job.id, err: err?.message }, 'Failed to retry DLQ queue job');
+        failedIds.push(job.id ?? 'unknown');
+      }
+    }
+  }
+
+  return {
+    success: failedIds.length === 0,
+    retriedCount: retriedIds.length,
+    failedCount: failedIds.length,
+    retriedIds,
+    failedIds,
+  };
+}
+
+export async function purgeDlqJobs(options: DlqPurgeOptions = {}) {
+  const limit = normalizeDlqLimit(options.limit, 500);
+  const afterMs = parseDlqDate(options.after, 'after');
+  const beforeMs =
+    options.olderThanDays !== undefined
+      ? (() => {
+          if (!Number.isFinite(options.olderThanDays) || (options.olderThanDays ?? 0) <= 0) {
+            throw new Error('olderThanDays must be a positive number');
+          }
+          return Date.now() - (options.olderThanDays as number) * 24 * 60 * 60 * 1000;
+        })()
+      : parseDlqDate(options.before, 'before');
+
+  if (afterMs === undefined && beforeMs === undefined) {
+    throw new Error('Must specify a date range for DLQ purge');
+  }
+  if (afterMs !== undefined && beforeMs !== undefined && afterMs > beforeMs) {
+    throw new Error('after must be earlier than before');
+  }
+
+  const isInRange = (timestamp: number) =>
+    (afterMs === undefined || timestamp >= afterMs) &&
+    (beforeMs === undefined || timestamp <= beforeMs);
+
+  const jobs = [
+    ...(alertQueue ? await alertQueue.getFailed(0, limit - 1) : []),
+    ...(dlqQueue ? await dlqQueue.getJobs(['waiting', 'delayed', 'failed'], 0, limit - 1) : []),
+  ];
+
+  let purgedCount = 0;
+  for (const job of jobs) {
+    if (!Number.isFinite(job.timestamp) || !isInRange(job.timestamp)) continue;
+    await job.remove();
+    purgedCount += 1;
+  }
+
+  return {
+    success: true,
+    purgedCount,
+  };
+}
+
 export async function processAlertDispatch(data: AlertJobData) {
   await workerFairnessManager.acquireWalletSlot(data.walletId);
   try {

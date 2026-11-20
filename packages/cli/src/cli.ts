@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { render } from 'ink';
 import { createElement } from 'react';
 import { registerWalletCommands } from './commands/wallet.js';
+import { registerInitCommand } from './commands/init.js';
 import { registerStreamCommands } from './commands/stream.js';
 import { registerProfileCommands } from './commands/profile.js';
 import { registerCompletionCommands } from './commands/completion.js';
@@ -28,6 +29,7 @@ program
 
 // Register command groups
 registerWalletCommands(program);
+registerInitCommand(program);
 registerStreamCommands(program);
 registerProfileCommands(program);
 registerCompletionCommands(program);

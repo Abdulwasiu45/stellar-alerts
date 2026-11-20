@@ -1,6 +1,8 @@
 import React from 'react';
 import { WalletDTO } from '@stellar-alerts/shared';
 import { CopyButton } from '@/components/ui/CopyButton';
+import { WalletTagSelector } from '@/components/wallets/WalletTagSelector';
+import { collectTags } from '@/lib/wallet-tags';
 
 interface WalletListProps {
   wallets: WalletDTO[];
@@ -8,6 +10,10 @@ interface WalletListProps {
   onSelectWallet: (id: string | null) => void;
   onRemoveWallet: (id: string) => void;
   onOpenAddModal: () => void;
+  onUpdateWalletMetadata?: (
+    id: string,
+    metadata: { nickname?: string; colorHex?: string; tags?: string[] },
+  ) => Promise<void> | void;
   isStreamConnected?: boolean;
 }
 
@@ -17,8 +23,11 @@ export const WalletList: React.FC<WalletListProps> = ({
   onSelectWallet,
   onRemoveWallet,
   onOpenAddModal,
+  onUpdateWalletMetadata,
   isStreamConnected = true,
 }) => {
+  const availableTags = collectTags(wallets);
+
   return (
     <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 backdrop-blur-xl shadow-xl mb-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -109,6 +118,14 @@ export const WalletList: React.FC<WalletListProps> = ({
                       label="Copy public key"
                     />
                   </div>
+                  {onUpdateWalletMetadata ? (
+                    <WalletTagSelector
+                      wallet={wallet}
+                      availableTags={availableTags}
+                      onSave={onUpdateWalletMetadata}
+                      className="mt-2"
+                    />
+                  ) : null}
                 </div>
                 <button
                   onClick={(e) => {

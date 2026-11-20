@@ -1,4 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { purgeDlqJobs, retryDlqJobs } from '../../lib/queue';
 import { dlqReplayService, DlqFilterParams } from './dlq-replay.service';
 
 export class DlqController {
@@ -52,6 +53,57 @@ export class DlqController {
       const result = await dlqReplayService.purgeJobs({
         ...req.body,
         actorUserId,
+      });
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.code(400).send({ error: err.message });
+    }
+  }
+
+  async retry(
+    req: FastifyRequest<{
+      Body: {
+        ids?: string[];
+        limit?: number;
+      };
+    }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const result = await retryDlqJobs(req.body ?? {});
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.code(400).send({ error: err.message });
+    }
+  }
+
+  async purgeQueue(
+    req: FastifyRequest<{
+      Body?: {
+        after?: string;
+        before?: string;
+        olderThanDays?: number;
+        limit?: number;
+      };
+      Querystring: {
+        after?: string;
+        before?: string;
+        olderThanDays?: string;
+        limit?: string;
+      };
+    }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const query = req.query ?? {};
+      const olderThanDays = query.olderThanDays !== undefined ? Number(query.olderThanDays) : undefined;
+      const limit = query.limit !== undefined ? Number(query.limit) : undefined;
+      const result = await purgeDlqJobs({
+        ...req.body,
+        after: req.body?.after ?? query.after,
+        before: req.body?.before ?? query.before,
+        olderThanDays: req.body?.olderThanDays ?? olderThanDays,
+        limit: req.body?.limit ?? limit,
       });
       return reply.send(result);
     } catch (err: any) {

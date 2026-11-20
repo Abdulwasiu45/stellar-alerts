@@ -39,6 +39,8 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/dlq', dlqController.inspect.bind(dlqController));
   app.post('/admin/dlq/replay', dlqController.replay.bind(dlqController));
+  app.post('/admin/dlq/retry', dlqController.retry.bind(dlqController));
   app.post('/admin/dlq/purge', dlqController.purge.bind(dlqController));
+  app.delete('/admin/dlq/purge', dlqController.purgeQueue.bind(dlqController));
   app.get('/admin/health/db', healthController.dbhealth);
 }
