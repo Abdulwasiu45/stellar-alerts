@@ -198,6 +198,11 @@ export type NotificationDelivery = Prisma.NotificationDeliveryModel
  */
 export type NotificationDeliveryAttempt = Prisma.NotificationDeliveryAttemptModel
 /**
+ * Model DeduplicationLog
+ * 
+ */
+export type DeduplicationLog = Prisma.DeduplicationLogModel
+/**
  * Model DeadLetter
  * 
  */

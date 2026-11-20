@@ -87,6 +87,7 @@ export const ModelName = {
   SecurityAuditLog: 'SecurityAuditLog',
   NotificationDelivery: 'NotificationDelivery',
   NotificationDeliveryAttempt: 'NotificationDeliveryAttempt',
+  DeduplicationLog: 'DeduplicationLog',
   DeadLetter: 'DeadLetter',
   WebhookSandboxReplay: 'WebhookSandboxReplay',
   DeadLetterAudit: 'DeadLetterAudit',
@@ -671,6 +672,17 @@ export const NotificationDeliveryAttemptScalarFieldEnum = {
 } as const
 
 export type NotificationDeliveryAttemptScalarFieldEnum = (typeof NotificationDeliveryAttemptScalarFieldEnum)[keyof typeof NotificationDeliveryAttemptScalarFieldEnum]
+
+
+export const DeduplicationLogScalarFieldEnum = {
+  txHash: 'txHash',
+  operationIndex: 'operationIndex',
+  eventHash: 'eventHash',
+  detectedAt: 'detectedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type DeduplicationLogScalarFieldEnum = (typeof DeduplicationLogScalarFieldEnum)[keyof typeof DeduplicationLogScalarFieldEnum]
 
 
 export const DeadLetterScalarFieldEnum = {

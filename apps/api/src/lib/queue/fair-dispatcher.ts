@@ -196,7 +196,7 @@ export class FairDispatcher<T extends FairDispatchJobData = FairDispatchJobData>
       tierName: tierName || 'professional',
     } as T;
 
-    return queue.add(jobName, jobData, jobOptions);
+    return (queue as any).add(jobName, jobData, jobOptions);
   }
 
   /**

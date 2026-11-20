@@ -64,8 +64,8 @@ export function sanitizeString(text: string): string {
 
   // 2. Mask Authorization headers and Bearer tokens
   if (/bearer|auth|token/i.test(sanitized)) {
-    sanitized = sanitized.replace(BEARER_TOKEN_REGEX, `Bearer ${REDACTED_TOKEN}`);
-    sanitized = sanitized.replace(AUTH_HEADER_REGEX, `$1${REDACTED_AUTH}$2`);
+    sanitized = sanitized.replace(BEARER_TOKEN_REGEX, `Bearer ${REDACT_TOKEN}`);
+    sanitized = sanitized.replace(AUTH_HEADER_REGEX, `$1${REDACT_AUTH}$2`);
   }
 
   // 3. Mask database connection strings
@@ -75,7 +75,7 @@ export function sanitizeString(text: string): string {
 
   // 4. Mask sensitive key-values (password, secret, privateKey)
   if (/(?:password|passwd|secret|private|token)/i.test(sanitized)) {
-    sanitized = sanitized.replace(SENSITIVE_KEY_VALUE_REGEX, `$1${REDACTED_VALUE}$2`);
+    sanitized = sanitized.replace(SENSITIVE_KEY_VALUE_REGEX, `$1${REDACT_VALUE}$2`);
   }
 
   // 5. Mask BIP-39 seed phrases

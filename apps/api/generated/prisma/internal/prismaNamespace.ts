@@ -433,6 +433,7 @@ export const ModelName = {
   SecurityAuditLog: 'SecurityAuditLog',
   NotificationDelivery: 'NotificationDelivery',
   NotificationDeliveryAttempt: 'NotificationDeliveryAttempt',
+  DeduplicationLog: 'DeduplicationLog',
   DeadLetter: 'DeadLetter',
   WebhookSandboxReplay: 'WebhookSandboxReplay',
   DeadLetterAudit: 'DeadLetterAudit',
@@ -454,7 +455,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "apiKey" | "wallet" | "ingestionCursor" | "payment" | "paymentArchive" | "outboxEvent" | "notificationPreference" | "deliveryLog" | "paymentChecksum" | "dailyChecksumRoot" | "alertRule" | "alertRuleDispatchLog" | "telegramSyncCode" | "whatsAppDeliveryLog" | "webhook" | "webhookLog" | "webhookCircuitBreaker" | "exportJob" | "transactionSimulation" | "sorobanEventSnapshot" | "sorobanStateAudit" | "sorobanContractSubscription" | "sacTokenMintBurnEvent" | "sacTokenSupply" | "multisigTreasury" | "multisigSignerWatcher" | "pendingMultisigTransaction" | "anchorTransactionWatch" | "dexSwapWatch" | "sorobanTopicIndex" | "sorobanTopicIndexCursor" | "dexSwapEvent" | "securityAuditLog" | "notificationDelivery" | "notificationDeliveryAttempt" | "deadLetter" | "webhookSandboxReplay" | "deadLetterAudit" | "mfaRecoveryCode" | "refreshSession" | "refreshTokenHistory"
+    modelProps: "user" | "apiKey" | "wallet" | "ingestionCursor" | "payment" | "paymentArchive" | "outboxEvent" | "notificationPreference" | "deliveryLog" | "paymentChecksum" | "dailyChecksumRoot" | "alertRule" | "alertRuleDispatchLog" | "telegramSyncCode" | "whatsAppDeliveryLog" | "webhook" | "webhookLog" | "webhookCircuitBreaker" | "exportJob" | "transactionSimulation" | "sorobanEventSnapshot" | "sorobanStateAudit" | "sorobanContractSubscription" | "sacTokenMintBurnEvent" | "sacTokenSupply" | "multisigTreasury" | "multisigSignerWatcher" | "pendingMultisigTransaction" | "anchorTransactionWatch" | "dexSwapWatch" | "sorobanTopicIndex" | "sorobanTopicIndexCursor" | "dexSwapEvent" | "securityAuditLog" | "notificationDelivery" | "notificationDeliveryAttempt" | "deduplicationLog" | "deadLetter" | "webhookSandboxReplay" | "deadLetterAudit" | "mfaRecoveryCode" | "refreshSession" | "refreshTokenHistory"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -3122,6 +3123,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    DeduplicationLog: {
+      payload: Prisma.$DeduplicationLogPayload<ExtArgs>
+      fields: Prisma.DeduplicationLogFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.DeduplicationLogFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.DeduplicationLogFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        findFirst: {
+          args: Prisma.DeduplicationLogFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.DeduplicationLogFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        findMany: {
+          args: Prisma.DeduplicationLogFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>[]
+        }
+        create: {
+          args: Prisma.DeduplicationLogCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        createMany: {
+          args: Prisma.DeduplicationLogCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.DeduplicationLogCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>[]
+        }
+        delete: {
+          args: Prisma.DeduplicationLogDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        update: {
+          args: Prisma.DeduplicationLogUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        deleteMany: {
+          args: Prisma.DeduplicationLogDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.DeduplicationLogUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.DeduplicationLogUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>[]
+        }
+        upsert: {
+          args: Prisma.DeduplicationLogUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        aggregate: {
+          args: Prisma.DeduplicationLogAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDeduplicationLog>
+        }
+        groupBy: {
+          args: Prisma.DeduplicationLogGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DeduplicationLogGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.DeduplicationLogCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DeduplicationLogCountAggregateOutputType> | number
+        }
+      }
+    }
     DeadLetter: {
       payload: Prisma.$DeadLetterPayload<ExtArgs>
       fields: Prisma.DeadLetterFieldRefs
@@ -4167,6 +4242,17 @@ export const NotificationDeliveryAttemptScalarFieldEnum = {
 export type NotificationDeliveryAttemptScalarFieldEnum = (typeof NotificationDeliveryAttemptScalarFieldEnum)[keyof typeof NotificationDeliveryAttemptScalarFieldEnum]
 
 
+export const DeduplicationLogScalarFieldEnum = {
+  txHash: 'txHash',
+  operationIndex: 'operationIndex',
+  eventHash: 'eventHash',
+  detectedAt: 'detectedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type DeduplicationLogScalarFieldEnum = (typeof DeduplicationLogScalarFieldEnum)[keyof typeof DeduplicationLogScalarFieldEnum]
+
+
 export const DeadLetterScalarFieldEnum = {
   id: 'id',
   deliveryKey: 'deliveryKey',
@@ -4598,6 +4684,7 @@ export type GlobalOmitConfig = {
   securityAuditLog?: Prisma.SecurityAuditLogOmit
   notificationDelivery?: Prisma.NotificationDeliveryOmit
   notificationDeliveryAttempt?: Prisma.NotificationDeliveryAttemptOmit
+  deduplicationLog?: Prisma.DeduplicationLogOmit
   deadLetter?: Prisma.DeadLetterOmit
   webhookSandboxReplay?: Prisma.WebhookSandboxReplayOmit
   deadLetterAudit?: Prisma.DeadLetterAuditOmit

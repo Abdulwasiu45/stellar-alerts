@@ -106,9 +106,9 @@ export class DeduplicationPipeline {
     try {
       // TIER 1: Fast Bloom Filter check
       const bloomFilterKey = this.getBloomFilterKey();
-      const bloomHit = await this.redis.bf_exists(bloomFilterKey, eventHash).catch(() => null);
+      const bloomHit = await (this.redis as any).call('BF.EXISTS', bloomFilterKey, eventHash).catch(() => null);
 
-      if (bloomHit === 1) {
+      if (bloomHit === 1 || bloomHit === '1') {
         // Bloom filter says it exists - but could be a false positive
         this.stats.bloomHits++;
 
@@ -206,7 +206,7 @@ export class DeduplicationPipeline {
    */
   private async addToBloomFilter(bloomFilterKey: string, eventHash: string): Promise<void> {
     try {
-      await this.redis.bf_add(bloomFilterKey, eventHash);
+      await (this.redis as any).call('BF.ADD', bloomFilterKey, eventHash);
       // Set TTL to expire old bloom filter
       await this.redis.expire(bloomFilterKey, this.config.bloomFilterTTLSeconds);
     } catch (error) {
@@ -368,7 +368,7 @@ export class DeduplicationPipeline {
       checksPerformed: this.stats.checksPerformed,
       duplicatesDetected: this.stats.duplicatesDetected,
       duplicateRate,
-      bloomFilterHitRate,
+      bloomFilterHitRate: bloomHitRate,
       lockAcquisitionRate:
         this.stats.checksPerformed > 0 ? (this.stats.lockAcquisitions / this.stats.checksPerformed) * 100 : 0,
       lockFailureRate,

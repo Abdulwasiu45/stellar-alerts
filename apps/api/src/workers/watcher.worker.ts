@@ -29,6 +29,7 @@ import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
 import { deduplicationPipeline } from '../lib/deduplicator';
+import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -84,7 +85,8 @@ export async function processPaymentRecord(
   return tracer.startActiveSpan('watcher.processPaymentRecord', async (span) => {
     try {
       const txHash: string = getHorizonTxHash(record);
-      const operationIndex = record.id ? parseInt(record.id.split('-')[1] || '0', 10) : 0;
+      const recordId = (record as any).id;
+      const operationIndex = recordId ? parseInt(String(recordId).split('-')[1] || '0', 10) : 0;
 
       // Check deduplication before any processing to avoid duplicate alerts across replicas
       const deduplicationResult = await deduplicationPipeline.checkAndMarkDuplicate(
