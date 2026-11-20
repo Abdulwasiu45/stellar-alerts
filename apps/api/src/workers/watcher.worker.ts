@@ -28,6 +28,7 @@ import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker
 import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
+import { deduplicationPipeline } from '../lib/deduplicator';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -82,12 +83,29 @@ export async function processPaymentRecord(
 ) {
   return tracer.startActiveSpan('watcher.processPaymentRecord', async (span) => {
     try {
+      const txHash: string = getHorizonTxHash(record);
+      const operationIndex = record.id ? parseInt(record.id.split('-')[1] || '0', 10) : 0;
+
+      // Check deduplication before any processing to avoid duplicate alerts across replicas
+      const deduplicationResult = await deduplicationPipeline.checkAndMarkDuplicate(
+        txHash,
+        operationIndex,
+      );
+
+      if (deduplicationResult.isDuplicate) {
+        log.debug(
+          { txHash, operationIndex, bloomHit: deduplicationResult.bloomFilterHit },
+          '🔄 Skipping duplicate transaction (already processing by another replica)',
+        );
+        span.end();
+        return;
+      }
+
       let amount: string | undefined;
       let asset: string = "XLM";
       let assetIssuer: string | null = null;
       let fromAddress: string = '';
       let memo: string | null = null;
-      const txHash: string = getHorizonTxHash(record);
       const receivedAt: Date = new Date(record.created_at || Date.now());
 
       if (isHorizonPayment(record)) {
@@ -1112,6 +1130,19 @@ export async function runWatcher() {
     }
   }, 50000); // Approximately every 50 seconds
   watcherLifecycle.trackInterval(snapshotTimer);
+
+  // Periodic deduplication cleanup (every 12 hours)
+  const deduplicationCleanupTimer = setInterval(async () => {
+    try {
+      const deleted = await deduplicationPipeline.cleanupOldRecords(1); // Keep 1 day of records
+      if (deleted > 0) {
+        log.info({ deleted }, '🧹 Cleaned up deduplication records');
+      }
+    } catch (err) {
+      log.warn({ error: err }, 'Failed to cleanup deduplication records');
+    }
+  }, 12 * 60 * 60 * 1000); // Every 12 hours
+  watcherLifecycle.trackInterval(deduplicationCleanupTimer);
 }
 
 async function processSorobanContractEvents(contractId: string) {
