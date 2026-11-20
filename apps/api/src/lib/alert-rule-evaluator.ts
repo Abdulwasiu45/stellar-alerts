@@ -1,4 +1,6 @@
 import { FilterRuleGroup, PaymentContext, evaluateRuleGroup } from './rules-engine';
+import { ruleCompiler, CompiledRuleFunction } from './rules-engine/compiler';
+import { ruleCompilationCache } from './rules-engine/cache';
 
 /**
  * A normalized payment event, independent of the Horizon/Soroban record
@@ -39,6 +41,13 @@ export interface AlertRuleRecord {
   isActive: boolean;
 }
 
+/**
+ * Compiled version of AlertRule with pre-compiled condition function
+ */
+export interface CompiledAlertRule extends AlertRuleRecord {
+  compiledCondition?: CompiledRuleFunction;
+}
+
 /** A rule with no walletId applies across all of the user's wallets. */
 export function ruleAppliesToWallet(rule: AlertRuleRecord, walletId: string): boolean {
   return rule.walletId === null || rule.walletId === undefined || rule.walletId === walletId;
@@ -69,10 +78,35 @@ export function ruleAppliesToMemo(rule: AlertRuleRecord, memo?: string | null): 
 }
 
 /**
+ * Compiles an alert rule's conditions into a fast closure function
+ */
+export function compileAlertRule(rule: AlertRuleRecord): CompiledAlertRule {
+  const compiled: CompiledAlertRule = { ...rule };
+
+  if (rule.conditions) {
+    try {
+      compiled.compiledCondition = ruleCompiler.compile(rule.conditions, `rule-${rule.id}`);
+    } catch (err) {
+      console.warn(`[AlertRuleEvaluator] Failed to compile conditions for rule ${rule.id}:`, err);
+    }
+  }
+
+  return compiled;
+}
+
+/**
+ * Compiles multiple alert rules for batch evaluation
+ */
+export function compileAlertRules(rules: AlertRuleRecord[]): CompiledAlertRule[] {
+  return rules.map((rule) => compileAlertRule(rule));
+}
+
+/**
  * Evaluates a single AlertRule against a normalized payment event. Inactive
  * rules never match, regardless of their other conditions.
+ * Uses compiled closure if available, falls back to interpreted evaluation.
  */
-export function matchesAlertRule(rule: AlertRuleRecord, event: NormalizedPaymentEvent): boolean {
+export function matchesAlertRule(rule: AlertRuleRecord | CompiledAlertRule, event: NormalizedPaymentEvent): boolean {
   if (!rule.isActive) return false;
   if (!ruleAppliesToWallet(rule, event.walletId)) return false;
   if (!ruleAppliesToAsset(rule, event.asset)) return false;
@@ -87,7 +121,15 @@ export function matchesAlertRule(rule: AlertRuleRecord, event: NormalizedPayment
       fromAddress: event.fromAddress,
       memo: event.memo ?? null,
     };
-    if (!evaluateRuleGroup(rule.conditions, context)) return false;
+
+    // Use compiled condition function if available for better performance
+    const compiledRule = rule as CompiledAlertRule;
+    if (compiledRule.compiledCondition) {
+      if (!ruleCompiler.evaluate(compiledRule.compiledCondition, context)) return false;
+    } else {
+      // Fallback to interpreted evaluation
+      if (!evaluateRuleGroup(rule.conditions, context)) return false;
+    }
   }
 
   return true;
@@ -99,6 +141,31 @@ export function evaluateAlertRules(
   event: NormalizedPaymentEvent,
 ): AlertRuleRecord[] {
   return rules.filter((rule) => matchesAlertRule(rule, event));
+}
+
+/**
+ * Optimized batch evaluation that pre-compiles all rules and evaluates a single event
+ * against the compiled rules. This is faster when evaluating the same set of rules
+ * against many events (typical case in alert processing).
+ */
+export function evaluateAlertRulesOptimized(
+  rules: AlertRuleRecord[],
+  event: NormalizedPaymentEvent,
+): AlertRuleRecord[] {
+  const compiled = compileAlertRules(rules);
+  return compiled.filter((rule) => matchesAlertRule(rule, event)).map(({ compiledCondition, ...rule }) => rule);
+}
+
+/**
+ * Cached evaluation that uses the compilation cache for repeated rule sets
+ * Most efficient for production use where the same rules are evaluated repeatedly
+ */
+export function evaluateAlertRulesCached(
+  rules: AlertRuleRecord[],
+  event: NormalizedPaymentEvent,
+): AlertRuleRecord[] {
+  const compiled = ruleCompilationCache.getOrCompileBatch(rules);
+  return compiled.filter((rule) => matchesAlertRule(rule, event)).map(({ compiledCondition, ...rule }) => rule);
 }
 
 export interface AlertRuleEvaluationResult {

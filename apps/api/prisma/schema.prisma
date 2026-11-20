@@ -790,6 +790,23 @@ model NotificationDeliveryAttempt {
 // through an authenticated API/UI, retry a failed delivery (idempotently), or
 // suppress a payload — every action leaving an audit trail in
 // `DeadLetterAudit`. `status`: pending | retried | suppressed.
+
+// ── Distributed Event Deduplication Pipeline (#920) ────────────────────────
+//
+// Persistent deduplication log backing Redis Bloom Filter for exactly-once
+// alert evaluation across replicas. Two-tier system: fast Bloom filter for
+// sub-millisecond checks, atomic locks + this table for distributed consensus.
+// Records automatically expire after 24 hours via scheduled cleanup.
+model DeduplicationLog {
+  txHash          String
+  operationIndex  Int
+  eventHash       String
+  detectedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@id([txHash, operationIndex])
+  @@index([detectedAt])
+}
 model DeadLetter {
   id           String   @id @default(cuid())
   deliveryKey  String?

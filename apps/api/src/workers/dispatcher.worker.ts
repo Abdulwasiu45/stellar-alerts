@@ -8,6 +8,7 @@ import {
   QUEUE_LANE_CONFIGS,
   resolveLaneForAlert,
 } from '../lib/queue-lanes';
+import { fairShareQueueScheduler, SUBSCRIBER_TIERS } from '../lib/queue/fair-scheduler';
 import { RedisCircuitBreaker, CircuitBreakerOpenError } from '../modules/alerts/circuit-breaker';
 import { isChatSnoozed } from '../modules/telegram/commands/snooze';
 import { webhookTelemetry } from '../modules/webhooks/webhook-telemetry';
@@ -31,6 +32,10 @@ export interface WebhookDispatchJobData {
   lane?: QueueLane;
   /** Severity of the underlying alert rule (critical/high/standard/bulk). */
   severity?: string;
+  /** Tenant/subscriber ID for fair scheduling */
+  tenantId?: string;
+  /** Subscriber tier for rate limiting (free/professional/enterprise) */
+  subscriberTier?: string;
 }
 
 export interface WebhookDispatchResult {
@@ -140,13 +145,32 @@ export class DispatcherWorker {
 
   /**
    * Processes a single webhook dispatch job.
-   * 1. Checks circuit breaker state.
-   * 2. Validates target URL and resolves/pins IP via SsrfFilter (rejecting private/internal IPs).
-   * 3. Dispatches webhook with pinned IP target.
+   * 1. Checks fair scheduling limits per tenant.
+   * 2. Checks circuit breaker state.
+   * 3. Validates target URL and resolves/pins IP via SsrfFilter (rejecting private/internal IPs).
+   * 4. Dispatches webhook with pinned IP target.
    */
   public async processJob(job: { data: WebhookDispatchJobData }): Promise<WebhookDispatchResult> {
-    const { webhookId, url, payload, headers = {}, paymentId } = job.data;
+    const { webhookId, url, payload, headers = {}, paymentId, tenantId, subscriberTier } = job.data;
     const lane: QueueLane = job.data.lane ?? resolveLaneForAlert(job.data);
+
+    // Fair scheduling check: prevent tenant monopolization
+    if (tenantId) {
+      const tierName = subscriberTier || 'professional';
+      const tier = SUBSCRIBER_TIERS[tierName] || SUBSCRIBER_TIERS.professional;
+
+      const canSchedule = await fairShareQueueScheduler.canScheduleJob(tenantId, tierName, 0);
+
+      if (!canSchedule.canProcess) {
+        log.debug(
+          { webhookId, tenantId, waitTimeMs: canSchedule.waitTimeMs, lane },
+          '⏳ Webhook deferred due to subscriber rate limit',
+        );
+        // Defer this job with exponential backoff
+        const delayMs = Math.min(canSchedule.waitTimeMs, 5000) + 100;
+        throw new Error(`Rate limited, retry after ${delayMs}ms`);
+      }
+    }
 
     // Check circuit breaker state first
     const canSend = await this.circuitBreaker.canExecute(webhookId);
@@ -294,6 +318,11 @@ export class DispatcherWorker {
   /** Returns the lane manager used by this worker (for metrics/integration tests). */
   public getLaneManager(): QueueLaneManager {
     return this.laneManager;
+  }
+
+  /** Returns fair scheduling statistics */
+  public getFairSchedulingStats() {
+    return fairShareQueueScheduler.getStats();
   }
 }
 

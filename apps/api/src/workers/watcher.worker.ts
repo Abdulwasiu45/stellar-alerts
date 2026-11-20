@@ -27,6 +27,8 @@ import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
 import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
+import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
+import { deduplicationPipeline } from '../lib/deduplicator';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -81,12 +83,29 @@ export async function processPaymentRecord(
 ) {
   return tracer.startActiveSpan('watcher.processPaymentRecord', async (span) => {
     try {
+      const txHash: string = getHorizonTxHash(record);
+      const operationIndex = record.id ? parseInt(record.id.split('-')[1] || '0', 10) : 0;
+
+      // Check deduplication before any processing to avoid duplicate alerts across replicas
+      const deduplicationResult = await deduplicationPipeline.checkAndMarkDuplicate(
+        txHash,
+        operationIndex,
+      );
+
+      if (deduplicationResult.isDuplicate) {
+        log.debug(
+          { txHash, operationIndex, bloomHit: deduplicationResult.bloomFilterHit },
+          '🔄 Skipping duplicate transaction (already processing by another replica)',
+        );
+        span.end();
+        return;
+      }
+
       let amount: string | undefined;
       let asset: string = "XLM";
       let assetIssuer: string | null = null;
       let fromAddress: string = '';
       let memo: string | null = null;
-      const txHash: string = getHorizonTxHash(record);
       const receivedAt: Date = new Date(record.created_at || Date.now());
 
       if (isHorizonPayment(record)) {
@@ -1008,6 +1027,29 @@ export async function runWatcher() {
     );
   });
 
+  // Recover worker state from latest snapshot if available (for fast failover)
+  let recoveredCursors: Map<string, string> | null = null;
+  try {
+    recoveredCursors = await stateSnapshotManager.recoverFromSnapshot();
+    if (recoveredCursors && recoveredCursors.size > 0) {
+      log.info({ cursorCount: recoveredCursors.size }, '🔄 Recovering ingestion cursors from snapshot');
+      // Apply recovered cursors to database
+      for (const [walletId, pagingToken] of recoveredCursors) {
+        try {
+          await prisma.ingestionCursor.upsert({
+            where: { walletId },
+            create: { walletId, pagingToken },
+            update: { pagingToken },
+          });
+        } catch (err) {
+          log.warn({ walletId, error: err }, 'Failed to restore cursor from snapshot');
+        }
+      }
+    }
+  } catch (err) {
+    log.warn({ error: err }, 'Snapshot recovery failed, proceeding with fresh state');
+  }
+
   const poll = async () => {
     return watcherLifecycle.runTask(async () => {
       return tracer.startActiveSpan('watcher.poll', async (pollSpan) => {
@@ -1074,6 +1116,33 @@ export async function runWatcher() {
     loadContractRegistry();
   }, 300000);
   watcherLifecycle.trackInterval(registryTimer);
+
+  // Periodic state snapshot for disaster recovery (every ~50 seconds = 10 ledgers at ~5s/ledger)
+  const snapshotTimer = setInterval(async () => {
+    try {
+      // Use a fixed ledger offset for snapshot timing
+      const currentLedger = Math.floor(Date.now() / 5000);
+      await stateSnapshotManager.createSnapshot(currentLedger);
+      // Cleanup old snapshots beyond retention policy
+      await stateSnapshotManager.cleanupOldSnapshots();
+    } catch (err) {
+      log.warn({ error: err }, 'Failed to create periodic state snapshot');
+    }
+  }, 50000); // Approximately every 50 seconds
+  watcherLifecycle.trackInterval(snapshotTimer);
+
+  // Periodic deduplication cleanup (every 12 hours)
+  const deduplicationCleanupTimer = setInterval(async () => {
+    try {
+      const deleted = await deduplicationPipeline.cleanupOldRecords(1); // Keep 1 day of records
+      if (deleted > 0) {
+        log.info({ deleted }, '🧹 Cleaned up deduplication records');
+      }
+    } catch (err) {
+      log.warn({ error: err }, 'Failed to cleanup deduplication records');
+    }
+  }, 12 * 60 * 60 * 1000); // Every 12 hours
+  watcherLifecycle.trackInterval(deduplicationCleanupTimer);
 }
 
 async function processSorobanContractEvents(contractId: string) {
