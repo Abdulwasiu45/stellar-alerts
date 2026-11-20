@@ -160,7 +160,7 @@ export class WasmAuditSentinel {
     // Fallback using V8 built-in WebAssembly engine if available
     try {
       if (typeof WebAssembly !== 'undefined' && typeof WebAssembly.Module !== 'undefined') {
-        const mod = new WebAssembly.Module(buf);
+        const mod = new WebAssembly.Module(new Uint8Array(buf));
         const modExports = WebAssembly.Module.exports(mod);
         for (const exp of modExports) {
           if (exp.kind === 'function') {
@@ -308,7 +308,7 @@ export class WasmAuditSentinel {
         }),
       );
 
-      const res: any = await server.getLedgerEntries([contractKey]);
+      const res: any = await server.getLedgerEntries(contractKey);
       const entries = res.entries || [];
       if (entries.length === 0) return null;
 
@@ -328,7 +328,7 @@ export class WasmAuditSentinel {
         new StellarSdk.xdr.LedgerKeyContractCode({ hash: wasmHash }),
       );
 
-      const codeRes: any = await server.getLedgerEntries([codeKey]);
+      const codeRes: any = await server.getLedgerEntries(codeKey);
       const codeEntries = codeRes.entries || [];
       if (codeEntries.length === 0) return null;
 

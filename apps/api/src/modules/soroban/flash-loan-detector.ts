@@ -216,7 +216,7 @@ export class FlashLoanDetector {
       const rawOps = tx.operations() || [];
       for (const op of rawOps) {
         const body = op.body();
-        const typeArm = body.arm();
+        const typeArm = body.switch()?.name || 'unknown';
         operations.push({
           type: typeArm,
         });

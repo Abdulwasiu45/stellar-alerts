@@ -7,6 +7,7 @@ import {
   type EmailTemplateConfig,
 } from '@/components/dashboard';
 import { AudioAlertStudio } from '@/components/settings/AudioAlertStudio';
+import { useEmailTemplatePreference } from '@/hooks/useEmailTemplatePreference';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
 

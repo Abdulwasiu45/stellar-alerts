@@ -78,7 +78,7 @@ let wasmIntervalId: NodeJS.Timeout | null = null;
 export function startWasmSentinelWorker(intervalMs = 60000) {
   registerSupervisorHeartbeat();
   wasmIntervalId = setInterval(async () => {
-    await wasmSentinelLifecycle.withTask(async () => {
+    await wasmSentinelLifecycle.runTask(async () => {
       await runWasmAuditPass();
     });
   }, intervalMs);

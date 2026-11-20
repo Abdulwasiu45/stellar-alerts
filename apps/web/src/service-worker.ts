@@ -5,7 +5,7 @@
  * Caches payment history, alerts, and handles background sync events.
  */
 
-declare const self: ServiceWorkerGlobalScope;
+const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE_NAME = 'stellar-alerts-pwa-v1';
 const API_CACHE_NAME = 'stellar-alerts-api-v1';
@@ -17,7 +17,7 @@ const STATIC_PRECACHE = [
   '/favicon.ico',
 ];
 
-self.addEventListener('install', (event: ExtendableEvent) => {
+sw.addEventListener('install', (event: ExtendableEvent) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
@@ -26,12 +26,12 @@ self.addEventListener('install', (event: ExtendableEvent) => {
       } catch (err) {
         console.warn('[ServiceWorker] Some precache assets failed:', err);
       }
-      await self.skipWaiting();
+      await sw.skipWaiting();
     })()
   );
 });
 
-self.addEventListener('activate', (event: ExtendableEvent) => {
+sw.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
@@ -40,13 +40,13 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
           .filter((k) => k !== CACHE_NAME && k !== API_CACHE_NAME)
           .map((k) => caches.delete(k))
       );
-      await self.clients.claim();
+      await sw.clients.claim();
     })()
   );
 });
 
 // Fetch event with offline fallback
-self.addEventListener('fetch', (event: FetchEvent) => {
+sw.addEventListener('fetch', (event: FetchEvent) => {
   const { request } = event;
   const url = new URL(request.url);
 
@@ -103,13 +103,13 @@ self.addEventListener('fetch', (event: FetchEvent) => {
 });
 
 // Background Sync event handler
-self.addEventListener('sync', (event: any) => {
+sw.addEventListener('sync', (event: any) => {
   if (event.tag === 'sync-rules' || event.tag === 'sync-alerts') {
     event.waitUntil(
       (async () => {
         console.log(`[ServiceWorker] Processing background sync: ${event.tag}`);
         // Notify all clients to trigger queue synchronization
-        const allClients = await self.clients.matchAll({ includeUncontrolled: true });
+        const allClients = await sw.clients.matchAll({ includeUncontrolled: true });
         for (const client of allClients) {
           client.postMessage({
             type: 'BACKGROUND_SYNC_TRIGGERED',

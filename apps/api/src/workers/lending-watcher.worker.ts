@@ -108,7 +108,7 @@ let pollInterval: NodeJS.Timeout | null = null;
 export function startLendingWatcher(intervalMs = 30000) {
   registerSupervisorHeartbeat();
   pollInterval = setInterval(async () => {
-    await lendingWatcherLifecycle.withTask(async () => {
+    await lendingWatcherLifecycle.runTask(async () => {
       await runLendingWatcherPass();
     });
   }, intervalMs);
