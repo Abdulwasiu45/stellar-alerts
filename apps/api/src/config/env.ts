@@ -171,6 +171,28 @@ const envSchema = z.object({
     .positive()
     .optional()
     .default(5000),
+  // Cold-tier ledger archival (Parquet on S3 / GCS / local disk)
+  ARCHIVE_STORAGE_PROVIDER: z.enum(["local", "s3", "gcs"]).optional().default("local"),
+  // Bucket for the s3 / gcs providers.
+  ARCHIVE_BUCKET: z.string().optional().default(""),
+  // Key prefix all archives are written under.
+  ARCHIVE_PREFIX: z.string().optional().default("ledger-archive"),
+  ARCHIVE_REGION: z.string().optional().default("us-east-1"),
+  // Custom endpoint (MinIO, R2, ...). Defaults to storage.googleapis.com for gcs.
+  ARCHIVE_ENDPOINT: z.string().optional().default(""),
+  // Static credentials; for gcs these are HMAC interoperability keys.
+  // Leave empty on s3 to use the default AWS credential chain.
+  ARCHIVE_ACCESS_KEY_ID: z.string().optional().default(""),
+  ARCHIVE_SECRET_ACCESS_KEY: z.string().optional().default(""),
+  // Directory for the local provider; empty = <os tmpdir>/stellar-alerts-archive.
+  ARCHIVE_LOCAL_DIR: z.string().optional().default(""),
+  // Rows older than this many days are moved to the cold tier.
+  ARCHIVE_RETENTION_DAYS: z.coerce.number().int().positive().optional().default(90),
+  // Rows read per batch (one batch can fan out into several year/month files).
+  ARCHIVE_BATCH_SIZE: z.coerce.number().int().positive().optional().default(10000),
+  // Delete hot rows once their archive is uploaded and checksum-verified.
+  ARCHIVE_PRUNE_HOT_ROWS: z.string().optional().default("true"),
+  ARCHIVE_INTERVAL_MS: z.coerce.number().int().positive().optional().default(6 * 60 * 60 * 1000),
   // Asynchronous export jobs (#321)
   EXPORT_WORKER_ENABLED: z.string().optional().default("true"),
   // Directory for generated export files; empty = <os tmpdir>/stellar-alerts-exports.

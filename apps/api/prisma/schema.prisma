@@ -149,6 +149,39 @@ model PaymentArchive {
   @@index([archivedAt])
 }
 
+// One verified Parquet object in the cold-tier ledger archive. A row exists
+// only after the object was uploaded and its SHA-256 was verified in storage,
+// so it doubles as the audit trail for pruned hot-database rows.
+model ArchiveManifest {
+  id          String   @id @default(cuid())
+  dataset     String
+  year        Int
+  month       Int
+  objectKey   String   @unique
+  provider    String
+  location    String
+  sha256      String
+  sizeBytes   Int
+  rowCount    Int
+  minRecordAt DateTime
+  maxRecordAt DateTime
+  verifiedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([dataset, year, month])
+}
+
+// High-water mark of the cold-tier export for one source table
+// (scope = "<dataset>:<tier>"). Rows are immutable and the cursor runs on
+// (createdAt, id), so a row is exported exactly once even when it cannot be
+// pruned from the hot table afterwards.
+model ArchiveCursor {
+  scope         String   @id
+  lastCreatedAt DateTime
+  lastId        String
+  updatedAt     DateTime @updatedAt
+}
+
 model OutboxEvent {
   id          String    @id @default(cuid())
   eventType   String
