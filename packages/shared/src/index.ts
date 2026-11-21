@@ -7,11 +7,15 @@ import { isValidEd25519PublicKey } from './strkey';
 export type { components as ApiComponents, paths as ApiPaths } from './generated/api-types';
 export * from './config/index';
 export * from './merkle';
+export * from './soroban/scval-parser';
 // Single source of truth for Stellar StrKey / transaction-hash validation
 // (Ed25519 public keys, contract IDs, muxed addresses, transaction hashes).
 export * from './strkey';
 // Request / response contracts for authentication flows (SEP-0010).
 export * from './schemas/auth';
+export * from './schemas/vesting';
+export * from './schemas/defi';
+export * from './schemas/alerts';
 
 const dateDTO = z.union([z.date(), z.string()]);
 
@@ -24,12 +28,17 @@ export const userDTOSchema = z
   .passthrough();
 export type UserDTO = z.infer<typeof userDTOSchema>;
 
+export const walletTagSchema = z.string().trim().min(1).max(50);
+
 export const walletDTOSchema = z
   .object({
     id: z.string(),
     userId: z.string(),
     publicKey: z.string(),
     label: z.string().nullable().optional(),
+    nickname: z.string().nullable().optional(),
+    colorHex: z.string().nullable().optional(),
+    tags: z.array(walletTagSchema).optional(),
     createdAt: dateDTO,
   })
   .passthrough();

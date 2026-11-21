@@ -17,6 +17,8 @@
     "indexer:benchmark": "npm run indexer:benchmark --workspace=api",
     "dev:reporting": "npm run dev:reporting --workspace=api",
     "dev:checksum-worker": "npm run dev:checksum-worker --workspace=api",
+    "docker:up": "docker compose up -d && ./scripts/verify-local-env.sh",
+    "docker:health": "./scripts/verify-local-env.sh",
     "dev:web": "npm run dev --workspace=web",
     "dev:collab": "npm run dev:collab --workspace=web",
     "db:push": "npm run db:push --workspace=api",
@@ -36,14 +38,15 @@
     "check:secrets": "node tools/check-secrets.mjs",
     "check:secrets:staged": "node scripts/scan-staged-secrets.mjs",
     "test:contributor-checks": "node --test tools/check-env-examples.test.mjs tools/check-secrets.test.mjs",
+    "collections:export": "tsx scripts/export-collections.ts",
     "openapi:check:breaking": "tsx scripts/check-openapi-breaking-changes.ts",
     "benchmark:stream": "tsx scripts/benchmark-stream.ts",
     "security:audit": "osv-scanner scan source -r . --config osv-scanner.toml",
     "verify:migrations": "npx tsx scripts/verify-migrations.ts",
     "verify:migrations:dry-run": "npx tsx scripts/verify-migrations.ts --dry-run",
-    "test:scripts": "vitest run --config scripts/vitest.config.ts",
     "release:report": "npx tsx scripts/release-report.ts",
     "release:report:check": "npx tsx scripts/release-report.ts --check",
+    "commit": "cz",
     "prepare": "husky"
   },
   "packageManager": "npm@10.8.2",
@@ -53,7 +56,16 @@
   "dependencies": {
     "@prisma/client": "^6.19.3"
   },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "commitizen": "^4.3.2",
+    "cz-conventional-changelog": "^3.3.0",
     "eslint": "^9.39.5",
     "husky": "^9.1.7",
     "lint-staged": "^17.4.1",

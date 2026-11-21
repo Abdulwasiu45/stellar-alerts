@@ -46,7 +46,7 @@ describe('Visual Regression & Responsive Dashboard States (#332)', () => {
         />
       );
 
-      expect(screen.getByText(/\+50/i)).toBeInTheDocument();
+      expect(screen.getByText(/50\.00\s+USDC/i)).toBeInTheDocument();
       expect(screen.getAllByText('USDC').length).toBeGreaterThan(0);
 
       const table = screen.getByRole('table');

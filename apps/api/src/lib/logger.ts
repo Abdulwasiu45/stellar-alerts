@@ -12,6 +12,7 @@
  * `createLogger({ module, requestId })`.
  */
 import pino, { type Logger, type LoggerOptions } from 'pino';
+import { sanitizeString, sanitizeObject, createSanitizingStream } from './sanitizer';
 
 /** Paths censored in every log line (Pino redact). */
 export const REDACT_PATHS: string[] = [
@@ -99,8 +100,8 @@ export const loggerOptions: LoggerOptions = {
   },
 };
 
-/** Root logger – all child loggers inherit this configuration. */
-export const rootLogger: Logger = pino(loggerOptions);
+/** Root logger – all child loggers inherit this configuration and sanitize via stream. */
+export const rootLogger: Logger = pino(loggerOptions, createSanitizingStream(process.stdout));
 
 export type LoggerBindings = {
   requestId?: string;
@@ -132,6 +133,7 @@ export function createLogger(bindings: LoggerBindings = {}): Logger {
 export function sanitizeForLog(value: unknown, depth = 0): unknown {
   if (depth > 8) return '[Truncated]';
   if (value == null) return value;
+  if (typeof value === 'string') return sanitizeString(value);
   if (typeof value !== 'object') return value;
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeForLog(item, depth + 1));

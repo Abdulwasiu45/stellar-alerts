@@ -44,6 +44,11 @@ export async function webhooksRoutes(app: FastifyInstance) {
     { preHandler: [adminScope] },
     webhookSandboxReplayController.replay.bind(webhookSandboxReplayController)
   );
+  app.post(
+    '/webhooks/:id/rotate-secret',
+    { preValidation: idempotent.preValidation, preHandler: [adminScope], onSend: idempotent.onSend, onResponse: idempotent.onResponse },
+    webhooksController.rotateSecret.bind(webhooksController)
+  );
   app.get(
     '/webhooks/:id/logs',
     { preHandler: [adminScope] },

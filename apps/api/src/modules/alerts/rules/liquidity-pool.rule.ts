@@ -66,7 +66,10 @@ export class LiquidityPoolRuleEvaluator {
   private sentinel: LiquidityPoolSentinelEngine;
 
   constructor(config?: LiquidityPoolRuleConfig) {
-    this.sentinel = new LiquidityPoolSentinelEngine(config ?? {});
+    this.sentinel = new LiquidityPoolSentinelEngine({
+      warningShiftThresholdPct: config?.warningShiftPct,
+      criticalShiftThresholdPct: config?.criticalShiftPct,
+    });
   }
 
   public evaluate(rawEvent: any, rule: AlertRuleLike): LiquidityPoolMatchResult {

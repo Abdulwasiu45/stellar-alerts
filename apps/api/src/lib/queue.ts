@@ -24,8 +24,11 @@ import { dispatchSlackAlert, isValidSlackWebhookUrl } from '../utils/slack';
 import { dispatchPushNotification, PushNotificationData } from '../utils/push-protocol';
 import { classifyWorkerError, getWorkerMaxAttempts, PermanentWorkerError } from './worker-retry-policy';
 import { QueueLaneManager, QueueLane, resolveLaneForAlert } from './queue-lanes';
+import type { FilterRuleGroup } from './rules-engine';
 
 const queueLog = createLogger({ module: 'Queue' });
+
+export type AlertFilterConfig = FilterRuleGroup;
 
 export interface AlertJobData {
   paymentId: string;
@@ -36,10 +39,19 @@ export interface AlertJobData {
   assetIssuer?: string | null;
   fromAddress: string;
   receivedAt: string;
+  /** Correlation ID propagated from the originating HTTP request, if any. */
+  requestId?: string;
+  /** W3C traceparent propagated across BullMQ into webhook dispatch spans. */
+  traceparent?: string;
   /** Optional alert filter config — if provided, alerts are suppressed when rules fail */
   filterConfig?: AlertFilterConfig;
   /** Severity classification used to route the job into a priority lane */
   severity?: string;
+}
+
+interface WebhookDispatchMeta {
+  webhookId: string;
+  traceparent?: string;
 }
 
 const redisHost = process.env.REDIS_HOST || "localhost";
@@ -51,7 +63,7 @@ export let alertQueue: Queue<AlertJobData> | null = null;
 export let dlqQueue: Queue<AlertJobData> | null = null;
 export let alertQueueEvents: QueueEvents | null = null;
 export let alertWorker: Worker<AlertJobData> | null = null;
-export let queueLaneManager: QueueLaneManager | null = null;
+export let queueLaneManager: QueueLaneManager<AlertJobData> | null = null;
 
 export const circuitBreakers = new Map<string, CircuitBreaker<any>>();
 
@@ -142,6 +154,17 @@ async function assertBotIsChannelAdmin(botToken: string, chatId: string): Promis
   }
 }
 
+const WEBHOOK_LOG_RESPONSE_LIMIT = 5000;
+const WEBHOOK_LOG_PAYLOAD_LIMIT = 10000;
+
+async function readWebhookResponseBody(response: { text(): Promise<string> }): Promise<string> {
+  try {
+    return (await response.text()).substring(0, WEBHOOK_LOG_RESPONSE_LIMIT);
+  } catch {
+    return "";
+  }
+}
+
 export async function getOrCreateCircuitBreaker(
   webhookId: string,
 ): Promise<CircuitBreaker<any>> {
@@ -167,17 +190,21 @@ export async function getOrCreateCircuitBreaker(
         const error = new Error(`Rate limited: ${response.status}`) as Error & {
           statusCode?: number;
           headers?: Headers;
+          responseBody?: string;
         };
         error.statusCode = 429;
         error.headers = response.headers;
+        error.responseBody = await readWebhookResponseBody(response);
         throw error;
       }
 
       if (response.status >= 500) {
         const error = new Error(`Server error: ${response.status}`) as Error & {
           statusCode?: number;
+          responseBody?: string;
         };
         error.statusCode = response.status;
+        error.responseBody = await readWebhookResponseBody(response);
         throw error;
       }
 
@@ -261,6 +288,14 @@ export async function dispatchWebhookAndLog(
   traceparent?: string,
 ) {
   let targetUrl: string | undefined;
+  // Request context persisted on every WebhookLog row so users can debug
+  // exactly what was sent, where, and how the endpoint answered.
+  let requestPayload: string | undefined;
+  let startedAt: number | undefined;
+  const requestContext = () => ({
+    requestUrl: targetUrl,
+    requestPayload: requestPayload?.substring(0, WEBHOOK_LOG_PAYLOAD_LIMIT),
+  });
 
   try {
     const webhook = await prisma.webhook.findUnique({
@@ -283,6 +318,7 @@ export async function dispatchWebhookAndLog(
       await prisma.webhookLog.create({
         data: {
           webhookId,
+          ...requestContext(),
           error: `SSRF blocked: ${ssrfErr.message}`,
         },
       });
@@ -301,6 +337,7 @@ export async function dispatchWebhookAndLog(
         await prisma.webhookLog.create({
           data: {
             webhookId,
+            ...requestContext(),
             error: "Circuit breaker is open, endpoint temporarily disabled",
           },
         });
@@ -328,6 +365,7 @@ export async function dispatchWebhookAndLog(
       await prisma.webhookLog.create({
         data: {
           webhookId,
+          ...requestContext(),
           error: `Payload template ${templateResult.phase} error: ${templateResult.error}`,
         },
       });
@@ -335,6 +373,7 @@ export async function dispatchWebhookAndLog(
     }
 
     const payloadString = templateResult.body;
+    requestPayload = payloadString;
     // Dual-signature headers (#721): during an active rotation grace period
     // this attaches both the new secret's signature and the previous
     // secret's, so subscribers who haven't redeployed the rotated secret
@@ -346,18 +385,21 @@ export async function dispatchWebhookAndLog(
 
     const breaker = await getOrCreateCircuitBreaker(webhookId);
     const dispatchMeta: WebhookDispatchMeta = { webhookId, traceparent };
+    startedAt = Date.now();
     const response = await breaker.fire(webhook.url, payloadString, {
       "Content-Type": "application/json",
       ...signatureHeaders,
     }, dispatchMeta);
 
-    const responseBody = await response.text();
+    const responseBody = await readWebhookResponseBody(response);
 
     const deliveryLog = await prisma.webhookLog.create({
       data: {
         webhookId,
+        ...requestContext(),
         statusCode: response.status,
-        responseBody: responseBody.substring(0, 5000),
+        responseBody,
+        durationMs: Date.now() - startedAt,
       },
     });
     await publishDeliveryEvent(webhook.userId, deliveryLog);
@@ -383,6 +425,7 @@ export async function dispatchWebhookAndLog(
       await prisma.webhookLog.create({
         data: {
           webhookId,
+          ...requestContext(),
           error: "Circuit breaker is open",
         },
       });
@@ -394,7 +437,10 @@ export async function dispatchWebhookAndLog(
       await prisma.webhookLog.create({
         data: {
           webhookId,
+          ...requestContext(),
           statusCode: 429,
+          responseBody: error.responseBody,
+          durationMs: startedAt !== undefined ? Date.now() - startedAt : undefined,
           error: `Endpoint rate limited webhook delivery; retrying after ${delayMs}ms`,
         },
       });
@@ -431,6 +477,10 @@ export async function dispatchWebhookAndLog(
     const failureLog = await prisma.webhookLog.create({
       data: {
         webhookId,
+        ...requestContext(),
+        statusCode: typeof error.statusCode === "number" ? error.statusCode : undefined,
+        responseBody: error.responseBody,
+        durationMs: startedAt !== undefined ? Date.now() - startedAt : undefined,
         error: error.message.substring(0, 1000),
       },
     });
@@ -554,7 +604,7 @@ try {
   dlqQueue = new Queue<AlertJobData>('payment-alerts-dlq', { connection });
   alertQueueEvents = new QueueEvents('payment-alerts', { connection });
 
-  queueLaneManager = new QueueLaneManager({
+  queueLaneManager = new QueueLaneManager<AlertJobData>({
     connection,
     defaultJobOptions: {
       attempts: getWorkerMaxAttempts(),
@@ -652,6 +702,200 @@ export async function failedJobHandler({ jobId, failedReason }: { jobId?: string
   } catch (err: any) {
     queueLog.warn(`[Queue] Failed to process DLQ routing for ${jobId}: ${err.message}`);
   }
+}
+
+export interface DlqRetryOptions {
+  ids?: string[];
+  limit?: number;
+}
+
+export interface DlqPurgeOptions {
+  after?: Date | string;
+  before?: Date | string;
+  olderThanDays?: number;
+  limit?: number;
+}
+
+function normalizeDlqLimit(limit: number | undefined, fallback: number): number {
+  if (limit === undefined) return fallback;
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error('limit must be a positive integer');
+  }
+  return Math.min(limit, 1000);
+}
+
+function parseDlqDate(value: Date | string | undefined, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`Invalid ${field} date`);
+  }
+  return timestamp;
+}
+
+function dlqOriginalJobId(jobId: string | undefined): string | undefined {
+  if (!jobId) return undefined;
+  return jobId.startsWith('dlq-') ? jobId.slice(4) : jobId;
+}
+
+export async function retryDlqJobs(options: DlqRetryOptions = {}) {
+  if (!alertQueue && !dlqQueue) {
+    throw new Error('DLQ queues are unavailable');
+  }
+
+  const limit = normalizeDlqLimit(options.limit, 100);
+  const retriedIds: string[] = [];
+  const failedIds: string[] = [];
+  const requestedIds = options.ids?.map((id) => dlqOriginalJobId(id)).filter(Boolean) as string[];
+
+  if (requestedIds && requestedIds.length > 0) {
+    for (const id of requestedIds.slice(0, limit)) {
+      try {
+        let retried = false;
+
+        if (alertQueue) {
+          const job = await Job.fromId(alertQueue, id);
+          if (job) {
+            await job.retry();
+            retried = true;
+          }
+        }
+
+        if (!retried && dlqQueue) {
+          const dlqJob =
+            (await Job.fromId(dlqQueue, `dlq-${id}`)) ??
+            (await Job.fromId(dlqQueue, id));
+          if (!dlqJob || !alertQueue) {
+            failedIds.push(id);
+            continue;
+          }
+
+          await alertQueue.add('dispatch-alert', dlqJob.data, {
+            jobId: `retry-${id}-${Date.now()}`,
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 2000 },
+          });
+          await dlqJob.remove();
+          retried = true;
+        }
+
+        if (dlqQueue) {
+          const dlqCopy = await Job.fromId(dlqQueue, `dlq-${id}`);
+          if (dlqCopy) await dlqCopy.remove();
+        }
+
+        if (retried) {
+          retriedIds.push(id);
+        } else {
+          failedIds.push(id);
+        }
+      } catch (err: any) {
+        queueLog.warn({ id, err: err?.message }, 'Failed to retry DLQ job');
+        failedIds.push(id);
+      }
+    }
+
+    return {
+      success: failedIds.length === 0,
+      retriedCount: retriedIds.length,
+      failedCount: failedIds.length,
+      retriedIds,
+      failedIds,
+    };
+  }
+
+  const failedJobs = alertQueue ? await alertQueue.getFailed(0, limit - 1) : [];
+  const retriedOriginalIds = new Set<string>();
+
+  for (const job of failedJobs) {
+    try {
+      await job.retry();
+      if (job.id) retriedOriginalIds.add(job.id);
+      retriedIds.push(job.id ?? 'unknown');
+    } catch (err: any) {
+      queueLog.warn({ id: job.id, err: err?.message }, 'Failed to retry alert job');
+      failedIds.push(job.id ?? 'unknown');
+    }
+  }
+
+  if (dlqQueue) {
+    const dlqJobs = await dlqQueue.getJobs(['waiting', 'delayed', 'failed'], 0, limit - 1);
+    for (const job of dlqJobs) {
+      const originalId = dlqOriginalJobId(job.id);
+      try {
+        if (originalId && retriedOriginalIds.has(originalId)) {
+          await job.remove();
+          continue;
+        }
+
+        if (!alertQueue) {
+          failedIds.push(job.id ?? 'unknown');
+          continue;
+        }
+
+        await alertQueue.add('dispatch-alert', job.data, {
+          jobId: `retry-${job.id}-${Date.now()}`,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 2000 },
+        });
+        await job.remove();
+        retriedIds.push(job.id ?? 'unknown');
+      } catch (err: any) {
+        queueLog.warn({ id: job.id, err: err?.message }, 'Failed to retry DLQ queue job');
+        failedIds.push(job.id ?? 'unknown');
+      }
+    }
+  }
+
+  return {
+    success: failedIds.length === 0,
+    retriedCount: retriedIds.length,
+    failedCount: failedIds.length,
+    retriedIds,
+    failedIds,
+  };
+}
+
+export async function purgeDlqJobs(options: DlqPurgeOptions = {}) {
+  const limit = normalizeDlqLimit(options.limit, 500);
+  const afterMs = parseDlqDate(options.after, 'after');
+  const beforeMs =
+    options.olderThanDays !== undefined
+      ? (() => {
+          if (!Number.isFinite(options.olderThanDays) || (options.olderThanDays ?? 0) <= 0) {
+            throw new Error('olderThanDays must be a positive number');
+          }
+          return Date.now() - (options.olderThanDays as number) * 24 * 60 * 60 * 1000;
+        })()
+      : parseDlqDate(options.before, 'before');
+
+  if (afterMs === undefined && beforeMs === undefined) {
+    throw new Error('Must specify a date range for DLQ purge');
+  }
+  if (afterMs !== undefined && beforeMs !== undefined && afterMs > beforeMs) {
+    throw new Error('after must be earlier than before');
+  }
+
+  const isInRange = (timestamp: number) =>
+    (afterMs === undefined || timestamp >= afterMs) &&
+    (beforeMs === undefined || timestamp <= beforeMs);
+
+  const jobs = [
+    ...(alertQueue ? await alertQueue.getFailed(0, limit - 1) : []),
+    ...(dlqQueue ? await dlqQueue.getJobs(['waiting', 'delayed', 'failed'], 0, limit - 1) : []),
+  ];
+
+  let purgedCount = 0;
+  for (const job of jobs) {
+    if (!Number.isFinite(job.timestamp) || !isInRange(job.timestamp)) continue;
+    await job.remove();
+    purgedCount += 1;
+  }
+
+  return {
+    success: true,
+    purgedCount,
+  };
 }
 
 export async function processAlertDispatch(data: AlertJobData) {

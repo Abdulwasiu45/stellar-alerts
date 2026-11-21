@@ -14,4 +14,5 @@ export async function paymentsRoutes(app: FastifyInstance) {
    * Body: { xdrEnvelope: string }  (base64-encoded XDR TransactionEnvelope)
    */
   app.post('/payments/estimate-fee', paymentsController.estimateFee.bind(paymentsController));
+  app.get('/payments/:txHash/receipt', paymentsController.getReceipt.bind(paymentsController));
 }

@@ -203,7 +203,7 @@ export class ProtocolPauseSentinel {
     let events: Array<{ topics: string[]; data?: unknown }> | undefined;
     if (Array.isArray(record.events)) {
       events = record.events
-        .map((ev) => {
+        .map((ev): { topics: string[]; data?: unknown } | null => {
           if (ev && typeof ev === 'object' && 'topics' in ev && Array.isArray((ev as Record<string, unknown>).topics)) {
             const evRecord = ev as Record<string, unknown>;
             return {

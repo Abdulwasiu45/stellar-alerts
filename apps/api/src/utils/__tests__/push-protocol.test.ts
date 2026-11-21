@@ -33,7 +33,7 @@ describe('Push Protocol Utility Tests', () => {
     expect(link).toBe(`https://stellar.expert/explorer/testnet/tx/${sampleData.txHash}`);
   });
 
-  it('builds a valid Push Protocol notification payload', () => {
+  it('builds a valid Push Protocol notification payload, falling back to plaintext for a non-Stellar recipient', () => {
     const payload = buildPushNotificationPayload(sampleData);
 
     expect(payload.recipient).toBe(sampleData.recipientAddress);
@@ -41,8 +41,33 @@ describe('Push Protocol Utility Tests', () => {
     expect(payload.title).toContain('Stellar Payment Received');
     expect(payload.body).toContain('150.00 XLM');
     expect(payload.payload.cta).toContain(sampleData.txHash);
-    expect(payload.payload.data.paymentId).toBe('pay-101');
-    expect(payload.payload.data.amount).toBe('150.00');
+    // sampleData.recipientAddress is an Ethereum-style EPNS channel address,
+    // not a Stellar key, so encryption isn't possible and the data field
+    // falls back to plaintext rather than failing the whole dispatch.
+    expect(payload.payload.data.encrypted).toBe(false);
+    if (!payload.payload.data.encrypted) {
+      expect(payload.payload.data.paymentId).toBe('pay-101');
+      expect(payload.payload.data.amount).toBe('150.00');
+    }
+  });
+
+  it('encrypts the payload data when the recipient address is a valid Stellar public key', () => {
+    const stellarRecipientData: PushNotificationData = {
+      ...sampleData,
+      recipientAddress: 'GBJK72NPOOEOTPCEXZFOIDWQ5JV6MRC3NXPIKF7VF2VFBGKJVH4ILTPZ',
+    };
+
+    const payload = buildPushNotificationPayload(stellarRecipientData);
+
+    expect(payload.payload.data.encrypted).toBe(true);
+    if (payload.payload.data.encrypted) {
+      expect(payload.payload.data.ciphertext).toBeTruthy();
+      expect(payload.payload.data.nonce).toBeTruthy();
+      expect(payload.payload.data.ephemeralPublicKey).toBeTruthy();
+      // The plaintext payment details must not appear verbatim anywhere in
+      // the encrypted field.
+      expect(JSON.stringify(payload.payload.data)).not.toContain('pay-101');
+    }
   });
 
   it('dispatches push notification payload to endpoint successfully', async () => {

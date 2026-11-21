@@ -103,7 +103,7 @@ export function parseBridgeEvent(
   }
 
   const eventType = decodeSymbol(record.topics[0]);
-  if (!Object.prototype.hasOwnProperty(BRIDGE_EVENT_SIGNATURES, eventType)) {
+  if (!Object.prototype.hasOwnProperty.call(BRIDGE_EVENT_SIGNATURES, eventType)) {
     return null;
   }
   const type = eventType as BridgeEventType;
@@ -149,7 +149,7 @@ export class BridgeSentinel extends EventEmitter {
   private readonly source: SorobanEventSource;
   private readonly contracts: BridgeContractConfig[];
   private readonly pollIntervalMs: number;
-  private readonly onEvent?: (event: BridgeEvent) => Promise<void> | void;
+  private readonly onEvent?: (event: BridgeEvent) => Promise<void> | true | void;
   private lastLedger: number | null = null;
   private timer: NodeJS.Timeout | null = null;
   private running = false;

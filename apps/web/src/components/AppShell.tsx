@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { CommandPalette } from '@/components/CommandPalette';
+import { ShortcutsModal } from '@/components/common/ShortcutsModal';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { NotificationModal } from '@/components/dashboard';
 import { OnboardingWizard } from '@/components/onboarding';
 import { WalletAdapter } from '@/lib/adapters/wallet.adapter';
@@ -15,6 +17,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', match: '/dashboard' },
+  { href: '/dashboard/rules/new', label: 'Rule Builder', match: '/dashboard/rules' },
+  { href: '/dashboard/triage/INC-84920', label: 'Incident Triage', match: '/dashboard/triage' },
   { href: '/inspectors', label: 'Inspectors', match: '/inspectors' },
   { href: '/soroban', label: 'Soroban Inspector', match: '/soroban' },
   { href: '/onboarding', label: 'Onboarding', match: '/onboarding' },
@@ -31,6 +35,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  const { isOpen: isShortcutsOpen, setIsOpen: setIsShortcutsOpen } = useKeyboardShortcuts({
+    onNavigate: (path) => router.push(path),
+    onOpenSearch: () => setIsCommandPaletteOpen(true),
+  });
 
   useEffect(() => {
     if (!isMobileNavOpen) return;
@@ -55,18 +64,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const getHeaders = useSessionHeaders();
   const batchReader = useBatchReader();
-
-  const handleSavePreferences = async (prefs: { telegramChatId?: string; emailEnabled: boolean }) => {
-    try {
-      await fetch(`${API_BASE_URL}/notifications/preferences`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getHeaders() },
-        body: JSON.stringify(prefs),
-      });
-    } catch (err) {
-      console.error('Failed to save notification preferences:', err);
-    }
-  };
 
   // Adapters for the onboarding wizard: each step throws on failure so the
   // wizard can show an inline, retryable error instead of silently advancing.
@@ -165,7 +162,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </svg>
               <span className="hidden sm:inline">Search</span>
               <kbd className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-gray-400">
-                ?K
+                ⌘K
+              </kbd>
+            </button>
+            <button
+              onClick={() => setIsShortcutsOpen(true)}
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              data-testid="shortcuts-modal-trigger"
+              className="px-2 sm:px-3 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-gray-300 flex items-center gap-1.5 transition-colors cursor-pointer hover:border-cyan-500/40"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-gray-400">
+                ?
               </kbd>
             </button>
             <button
@@ -275,7 +286,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <NotificationModal
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}
-        onSavePreferences={handleSavePreferences}
+        accessToken={session?.accessToken}
       />
 
       {/* Three-step onboarding wizard: wallet connection → Telegram linking → notification preferences */}
@@ -330,6 +341,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ],
           },
         ]}
+      />
+
+      <ShortcutsModal
+        isOpen={isShortcutsOpen}
+        onClose={() => setIsShortcutsOpen(false)}
+        onOpen={() => setIsShortcutsOpen(true)}
       />
     </div>
   );

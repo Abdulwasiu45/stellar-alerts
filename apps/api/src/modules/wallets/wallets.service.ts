@@ -1,4 +1,4 @@
-import type { Prisma } from '../../generated/prisma/client';
+import type { Prisma } from '../../../generated/prisma/client';
 import { prisma, prismaRead } from '../../lib/prisma';
 import { verifyZkProof } from '../../utils/zkp-verifier';
 import {
@@ -69,6 +69,19 @@ export class WalletsService {
       return wallet;
     } catch (error: any) {
       if (error.code === 'P2002') {
+        if (typeof prisma.wallet.findUnique === 'function') {
+          const existing = await prisma.wallet.findUnique({ where: { publicKey } });
+          if (existing && existing.userId === targetUserId && existing.deletedAt) {
+            return prisma.wallet.update({
+              where: { id: existing.id },
+              data: {
+                deletedAt: null,
+                label,
+                tags: normalizedTags,
+              },
+            });
+          }
+        }
         throw new Error('Wallet already exists');
       }
       throw error;
@@ -80,7 +93,7 @@ export class WalletsService {
    */
   async updateWalletTags(userId: string, walletId: string, tags: string[]) {
     const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
-    if (!wallet || wallet.userId !== userId) {
+    if (!wallet || wallet.userId !== userId || wallet.deletedAt) {
       throw new Error('Wallet not found');
     }
 
@@ -96,18 +109,18 @@ export class WalletsService {
     update: { nickname?: string; colorHex?: string; tags?: string[] },
   ) {
     const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
-    if (!wallet || wallet.userId !== userId) {
+    if (!wallet || wallet.userId !== userId || wallet.deletedAt) {
       throw new Error('Wallet not found');
     }
 
     const currentMetadata = wallet.metadata && typeof wallet.metadata === 'object' && !Array.isArray(wallet.metadata)
-      ? wallet.metadata as Prisma.InputJsonObject
+      ? (wallet.metadata as Record<string, Prisma.InputJsonValue>)
       : {};
-    const metadata: Prisma.InputJsonObject = { ...currentMetadata };
+    const metadata: Record<string, Prisma.InputJsonValue> = { ...currentMetadata };
     if (update.nickname !== undefined) metadata.nickname = update.nickname;
     if (update.colorHex !== undefined) metadata.colorHex = update.colorHex;
 
-    const data: Prisma.WalletUpdateInput = { metadata };
+    const data: Prisma.WalletUpdateInput = { metadata: metadata as Prisma.InputJsonObject };
     if (update.tags !== undefined) {
       const tags = normalizeTags(update.tags);
       data.tags = tags;
@@ -132,8 +145,9 @@ export class WalletsService {
       const trimmedTag = tag.trim();
       if (trimmedTag) {
         const matchingIds = await prisma.$queryRaw<{ id: string }[]>`
-          SELECT "id" FROM "wallets"
+          SELECT "id" FROM "Wallet"
            WHERE "userId" = ${userId}
+             AND "deletedAt" IS NULL
              AND exists (
                SELECT 1 FROM unnest("tags") AS t
                WHERE lower(t) = lower(${trimmedTag})
@@ -151,7 +165,7 @@ export class WalletsService {
 
     const cursorWhere = cursor ? buildCursorWhere(cursor) : undefined;
     if (cursorWhere) {
-      where.AND = [{ OR: cursorWhere }];
+      where.AND = [cursorWhere];
     }
 
     const rows = await prismaRead.wallet.findMany({
@@ -164,27 +178,63 @@ export class WalletsService {
   }
 
   async getIngestionStatus(userId: string, walletId: string) {
-    const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
-    if (!wallet || wallet.userId !== userId) {
+    const wallet = await prisma.wallet.findUnique({
+      where: { id: walletId },
+      include: { cursor: true },
+    });
+    if (!wallet || wallet.userId !== userId || wallet.deletedAt) {
       throw new Error('Wallet not found');
     }
+    const cursor = (wallet as unknown as {
+      cursor?: {
+        pagingToken: string | null;
+        status: string;
+        consecutiveFailures: number;
+        lastError: string | null;
+        lastSuccessAt: Date | null;
+        lastSyncedAt: Date | null;
+        gapDetectedAt: Date | null;
+        lastGapLedgerDelta: number | null;
+      } | null;
+    }).cursor;
+
     return {
       walletId: wallet.id,
-      lastIngestedAt: (wallet as any).lastIngestedAt ?? null,
-      status: (id: string) => id,
+      publicKey: wallet.publicKey,
+      pagingToken: cursor?.pagingToken ?? null,
+      status: cursor?.status ?? 'active',
+      consecutiveFailures: cursor?.consecutiveFailures ?? 0,
+      lastError: cursor?.lastError ?? null,
+      lastSuccessAt: cursor?.lastSuccessAt ?? null,
+      lastSyncedAt: cursor?.lastSyncedAt ?? null,
+      gapDetectedAt: cursor?.gapDetectedAt ?? null,
+      lastGapLedgerDelta: cursor?.lastGapLedgerDelta ?? null,
     };
   }
 
   async removeWallet(userId: string, walletId: string) {
     const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
-    if (!wallet || wallet.userId !== userId) {
+    if (!wallet || wallet.userId !== userId || wallet.deletedAt) {
       throw new Error('Wallet not found');
     }
     // Soft-delete lifecycle: set deletedAt timestamp to avoid foreign-key cascading locks (#776)
-    await prisma.wallet.update({
-      where: { id: walletId },
-      data: { deletedAt: new Date() },
-    });
+    try {
+      await prisma.wallet.update({
+        where: { id: walletId },
+        data: { deletedAt: new Date() },
+      });
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'P2025'
+      ) {
+        throw new Error('Wallet not found');
+      }
+      throw error;
+    }
+    return { success: true };
   }
 }
 

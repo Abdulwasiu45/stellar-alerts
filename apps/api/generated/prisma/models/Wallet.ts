@@ -461,10 +461,6 @@ export type WalletUpdatetagsInput = {
   push?: string | string[]
 }
 
-export type NullableDateTimeFieldUpdateOperationsInput = {
-  set?: Date | string | null
-}
-
 export type WalletCreateNestedOneWithoutCursorInput = {
   create?: Prisma.XOR<Prisma.WalletCreateWithoutCursorInput, Prisma.WalletUncheckedCreateWithoutCursorInput>
   connectOrCreate?: Prisma.WalletCreateOrConnectWithoutCursorInput

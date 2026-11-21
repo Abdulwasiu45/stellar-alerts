@@ -85,6 +85,36 @@ export function useDashboardLayout({
     readStoredLayout(storageKey, defaultIds),
   );
 
+  // When widgets appear asynchronously after mount (e.g. portfolio loads and adds
+  // the wallets card), reconcile them into layout state so they aren't dropped.
+  const defaultIdsKey = defaultIds.join('\0');
+  useEffect(() => {
+    setLayout((prev) => {
+      const missing = defaultIds.filter((id) => !prev.order.includes(id));
+      if (missing.length === 0) {
+        return prev;
+      }
+      const nextVisible = { ...prev.visible };
+      for (const id of missing) {
+        if (typeof nextVisible[id] !== 'boolean') {
+          nextVisible[id] = true;
+        }
+      }
+      return {
+        order: [...prev.order, ...missing],
+        visible: nextVisible,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultIdsKey]);
+
+  // Include new ids synchronously on render before effects flush so immediate
+  // assertions and drag-and-drop operations see all widgets.
+  const effectiveOrder = useMemo(() => {
+    const missing = defaultIds.filter((id) => !layout.order.includes(id));
+    return missing.length === 0 ? layout.order : [...layout.order, ...missing];
+  }, [layout.order, defaultIds]);
+
   // Sync to localStorage on layout changes
   useEffect(() => {
     try {
@@ -124,26 +154,31 @@ export function useDashboardLayout({
     }));
   }, []);
 
-  const reorderWidgets = useCallback((sourceIndex: number, destinationIndex: number) => {
-    setLayout((prev) => {
-      if (
-        sourceIndex < 0 ||
-        sourceIndex >= prev.order.length ||
-        destinationIndex < 0 ||
-        destinationIndex >= prev.order.length ||
-        sourceIndex === destinationIndex
-      ) {
-        return prev;
-      }
-      const nextOrder = [...prev.order];
-      const [moved] = nextOrder.splice(sourceIndex, 1);
-      nextOrder.splice(destinationIndex, 0, moved);
-      return {
-        ...prev,
-        order: nextOrder,
-      };
-    });
-  }, []);
+  const reorderWidgets = useCallback(
+    (sourceIndex: number, destinationIndex: number) => {
+      setLayout((prev) => {
+        const missing = defaultIds.filter((id) => !prev.order.includes(id));
+        const baseOrder = missing.length === 0 ? prev.order : [...prev.order, ...missing];
+        if (
+          sourceIndex < 0 ||
+          sourceIndex >= baseOrder.length ||
+          destinationIndex < 0 ||
+          destinationIndex >= baseOrder.length ||
+          sourceIndex === destinationIndex
+        ) {
+          return prev;
+        }
+        const nextOrder = [...baseOrder];
+        const [moved] = nextOrder.splice(sourceIndex, 1);
+        nextOrder.splice(destinationIndex, 0, moved);
+        return {
+          ...prev,
+          order: nextOrder,
+        };
+      });
+    },
+    [defaultIds],
+  );
 
   const setOrder = useCallback((newOrder: string[]) => {
     setLayout((prev) => ({
@@ -166,11 +201,11 @@ export function useDashboardLayout({
   }, [defaultIds, storageKey]);
 
   const visibleOrder = useMemo(() => {
-    return layout.order.filter((id) => layout.visible[id] !== false);
-  }, [layout.order, layout.visible]);
+    return effectiveOrder.filter((id) => layout.visible[id] !== false);
+  }, [effectiveOrder, layout.visible]);
 
   return {
-    order: layout.order,
+    order: effectiveOrder,
     visible: layout.visible,
     visibleOrder,
     isWidgetVisible,

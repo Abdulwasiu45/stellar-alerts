@@ -220,6 +220,11 @@ export type NotificationDelivery = Prisma.NotificationDeliveryModel
  */
 export type NotificationDeliveryAttempt = Prisma.NotificationDeliveryAttemptModel
 /**
+ * Model DeduplicationLog
+ * 
+ */
+export type DeduplicationLog = Prisma.DeduplicationLogModel
+/**
  * Model DeadLetter
  * 
  */
@@ -249,3 +254,8 @@ export type RefreshSession = Prisma.RefreshSessionModel
  * 
  */
 export type RefreshTokenHistory = Prisma.RefreshTokenHistoryModel
+/**
+ * Model ContractWasmAudit
+ * 
+ */
+export type ContractWasmAudit = Prisma.ContractWasmAuditModel

@@ -54,7 +54,17 @@ describe('stellar.getRecentPayments / getPaymentsSince (StrKey guard)', () => {
   });
 
   it('getRecentPayments queries Horizon for a valid public key', async () => {
-    const record = { id: '1', paging_token: '1' };
+    const record = {
+      id: '1',
+      paging_token: '1',
+      type: 'payment',
+      created_at: '2026-10-05T00:00:00Z',
+      transaction_hash: 'tx-1',
+      amount: '10',
+      asset_type: 'native',
+      from: validPublicKey,
+      to: validPublicKey,
+    };
     const { chain, spy } = mockPaymentsChain([record]);
 
     const result = await stellar.getRecentPayments(validPublicKey, 5);
@@ -77,7 +87,17 @@ describe('stellar.getRecentPayments / getPaymentsSince (StrKey guard)', () => {
   });
 
   it('getPaymentsSince queries Horizon for a valid public key', async () => {
-    const record = { id: '2', paging_token: '2' };
+    const record = {
+      id: '2',
+      paging_token: '2',
+      type: 'payment',
+      created_at: '2026-10-05T00:00:00Z',
+      transaction_hash: 'tx-2',
+      amount: '10',
+      asset_type: 'native',
+      from: validPublicKey,
+      to: validPublicKey,
+    };
     const { chain, spy, multiSpy } = mockPaymentsChain([record]);
 
     const result = await stellar.getPaymentsSince(validPublicKey, '100', 50);
@@ -100,7 +120,17 @@ describe('MultiNodeHorizonClient failover & deduplication', () => {
       throw new Error('Primary node network timeout');
     });
 
-    const record = { id: 'multi-1', paging_token: '100' };
+    const record = {
+      id: 'multi-1',
+      paging_token: '100',
+      type: 'payment',
+      created_at: '2026-10-05T00:00:00Z',
+      transaction_hash: 'tx-multi-1',
+      amount: '10',
+      asset_type: 'native',
+      from: validPublicKey,
+      to: validPublicKey,
+    };
     const chain2 = {
       forAccount: vi.fn().mockReturnThis(),
       cursor: vi.fn().mockReturnThis(),
@@ -245,7 +275,17 @@ describe('MultiNodeHorizonClient failover & deduplication', () => {
     vi.spyOn(client.servers[0], 'payments').mockImplementation(() => {
       throw new Error('Primary node network timeout');
     });
-    const record = { id: 'multi-2', paging_token: '200' };
+    const record = {
+      id: 'multi-2',
+      paging_token: '200',
+      type: 'payment',
+      created_at: '2026-10-05T00:00:00Z',
+      transaction_hash: 'tx-multi-2',
+      amount: '10',
+      asset_type: 'native',
+      from: validPublicKey,
+      to: validPublicKey,
+    };
     vi.spyOn(client.servers[1], 'payments').mockReturnValue({
       forAccount: vi.fn().mockReturnThis(),
       cursor: vi.fn().mockReturnThis(),

@@ -21,6 +21,7 @@ import { MemoryMonitor, MemorySnapshot } from '../utils/memory-monitor';
 import { appendPaymentChecksum } from '../services/checksumChain.service';
 import { createLogger } from '../lib/logger';
 import { outboxService } from '../modules/outbox/outbox.service';
+import { velocityAnomalyDetector } from '../modules/security/velocity-detector';
 import { WorkerLifecycleManager } from '../lib/worker-lifecycle';
 import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
@@ -28,6 +29,11 @@ import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { runTrustlineSentinelPass } from '../modules/stellar/trustline-sentinel.service';
 import { anchorLifecycleWatcher } from '../modules/stellar/anchor-watcher.service';
+import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
+import { deduplicationPipeline } from '../lib/deduplicator';
+import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
+import { flashLoanDetector } from '../modules/soroban/flash-loan-detector';
+import { contractGovernanceSentinel } from '../modules/soroban/governance-sentinel.service';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -82,12 +88,30 @@ export async function processPaymentRecord(
 ) {
   return tracer.startActiveSpan('watcher.processPaymentRecord', async (span) => {
     try {
+      const txHash: string = getHorizonTxHash(record);
+      const recordId = (record as any).id;
+      const operationIndex = recordId ? parseInt(String(recordId).split('-')[1] || '0', 10) : 0;
+
+      // Check deduplication before any processing to avoid duplicate alerts across replicas
+      const deduplicationResult = await deduplicationPipeline.checkAndMarkDuplicate(
+        txHash,
+        operationIndex,
+      );
+
+      if (deduplicationResult.isDuplicate) {
+        log.debug(
+          { txHash, operationIndex, bloomHit: deduplicationResult.bloomFilterHit },
+          '🔄 Skipping duplicate transaction (already processing by another replica)',
+        );
+        span.end();
+        return;
+      }
+
       let amount: string | undefined;
       let asset: string = "XLM";
       let assetIssuer: string | null = null;
       let fromAddress: string = '';
       let memo: string | null = null;
-      const txHash: string = getHorizonTxHash(record);
       const receivedAt: Date = new Date(record.created_at || Date.now());
 
       if (isHorizonPayment(record)) {
@@ -321,6 +345,21 @@ export async function processPaymentRecord(
 
         if (wallet.userId) {
           await publishPaymentEvent(wallet.userId, payment);
+        }
+
+        // Dynamic Anomaly Detection for Flash Account Draining and Velocity Spikes (#931)
+        try {
+          await velocityAnomalyDetector.recordOutgoingTransfer({
+            accountId: fromAddress || wallet.publicKey,
+            amount: Number(amount),
+            txHash,
+            asset,
+            walletId: wallet.id,
+            userId: wallet.userId,
+            timestamp: receivedAt.getTime(),
+          });
+        } catch (velErr: any) {
+          log.warn({ err: velErr?.message, txHash }, 'Velocity anomaly detection evaluation skipped');
         }
 
         const alertJobPayload = {
@@ -952,7 +991,7 @@ async function runTrustlineSentinel(publicKeys: string[]): Promise<void> {
 export async function pollOnce() {
   return tracer.startActiveSpan('watcher.pollOnce', async (pollSpan) => {
     try {
-      const wallets = await prisma.wallet.findMany();
+      const wallets = await prisma.wallet.findMany({ where: { deletedAt: null } });
       if (wallets.length === 0) {
         pollSpan.setStatus({ code: SpanStatusCode.OK });
         pollSpan.end();
@@ -1024,11 +1063,34 @@ export async function runWatcher() {
     );
   });
 
+  // Recover worker state from latest snapshot if available (for fast failover)
+  let recoveredCursors: Map<string, string> | null = null;
+  try {
+    recoveredCursors = await stateSnapshotManager.recoverFromSnapshot();
+    if (recoveredCursors && recoveredCursors.size > 0) {
+      log.info({ cursorCount: recoveredCursors.size }, '🔄 Recovering ingestion cursors from snapshot');
+      // Apply recovered cursors to database
+      for (const [walletId, pagingToken] of recoveredCursors) {
+        try {
+          await prisma.ingestionCursor.upsert({
+            where: { walletId },
+            create: { walletId, pagingToken },
+            update: { pagingToken },
+          });
+        } catch (err) {
+          log.warn({ walletId, error: err }, 'Failed to restore cursor from snapshot');
+        }
+      }
+    }
+  } catch (err) {
+    log.warn({ error: err }, 'Snapshot recovery failed, proceeding with fresh state');
+  }
+
   const poll = async () => {
     return watcherLifecycle.runTask(async () => {
       return tracer.startActiveSpan('watcher.poll', async (pollSpan) => {
         try {
-          const wallets = await prisma.wallet.findMany();
+          const wallets = await prisma.wallet.findMany({ where: { deletedAt: null } });
           const activeWalletIds = new Set(wallets.map((wallet) => wallet.id));
           for (const [walletId, close] of walletStreams) {
             if (!activeWalletIds.has(walletId)) {
@@ -1082,23 +1144,7 @@ export async function runWatcher() {
     });
   };
 
-  // Start Horizon SSE streams for live ingestion (#523)
-  const wallets = await prisma.wallet.findMany();
-  const streamClosures: Array<() => void> = [];
-  for (const wallet of wallets) {
-    try {
-      const close = await startHorizonSSEStream(wallet);
-      streamClosures.push(close);
-      watcherLifecycle.registerCleanup(`sse-stream-${wallet.id}`, close);
-    } catch (err: any) {
-      log.error(
-        `[WatcherWorker] Failed to start SSE stream for wallet ${wallet.publicKey}:`,
-        err?.message || err,
-      );
-    }
-  }
-
-  // Also keep a lightweight periodic poll as fallback for catch-up safety
+  // Start initial poll, which opens SSE streams for active wallets and performs catch-up safety.
   await poll();
 
   const pollTimer = setInterval(poll, 30000);
@@ -1108,6 +1154,33 @@ export async function runWatcher() {
     loadContractRegistry();
   }, 300000);
   watcherLifecycle.trackInterval(registryTimer);
+
+  // Periodic state snapshot for disaster recovery (every ~50 seconds = 10 ledgers at ~5s/ledger)
+  const snapshotTimer = setInterval(async () => {
+    try {
+      // Use a fixed ledger offset for snapshot timing
+      const currentLedger = Math.floor(Date.now() / 5000);
+      await stateSnapshotManager.createSnapshot(currentLedger);
+      // Cleanup old snapshots beyond retention policy
+      await stateSnapshotManager.cleanupOldSnapshots();
+    } catch (err) {
+      log.warn({ error: err }, 'Failed to create periodic state snapshot');
+    }
+  }, 50000); // Approximately every 50 seconds
+  watcherLifecycle.trackInterval(snapshotTimer);
+
+  // Periodic deduplication cleanup (every 12 hours)
+  const deduplicationCleanupTimer = setInterval(async () => {
+    try {
+      const deleted = await deduplicationPipeline.cleanupOldRecords(1); // Keep 1 day of records
+      if (deleted > 0) {
+        log.info({ deleted }, '🧹 Cleaned up deduplication records');
+      }
+    } catch (err) {
+      log.warn({ error: err }, 'Failed to cleanup deduplication records');
+    }
+  }, 12 * 60 * 60 * 1000); // Every 12 hours
+  watcherLifecycle.trackInterval(deduplicationCleanupTimer);
 }
 
 async function processSorobanContractEvents(contractId: string) {
@@ -1238,6 +1311,38 @@ async function processSorobanContractEvents(contractId: string) {
       span.end();
     }
   });
+}
+
+/**
+ * Inspects a Soroban / SAC approval event for excessive or unlimited allowances (#901).
+ */
+export async function inspectSorobanApproval(
+  rawEvent: any,
+  tokenContractId: string,
+) {
+  const parsed = allowanceSentinelService.parseApprovalEvent(rawEvent, tokenContractId);
+  if (!parsed) return null;
+  return allowanceSentinelService.inspectApproval(parsed);
+}
+
+/**
+ * Real-time transaction flash loan detection engine (#897).
+ */
+export async function inspectTransactionForFlashLoans(input: {
+  txHash: string;
+  ledgerSeq: number;
+  invocations?: any[];
+  operations?: any[];
+  events?: any[];
+}) {
+  return flashLoanDetector.analyzeTransaction(input);
+}
+
+/**
+ * Contract governance & authority sentinel monitor (#899).
+ */
+export async function inspectContractGovernance(event: any) {
+  return contractGovernanceSentinel.parseGovernanceEvent(event);
 }
 
 export interface WatcherShutdownResources {

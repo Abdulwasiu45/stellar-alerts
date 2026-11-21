@@ -57,6 +57,14 @@ vi.mock('../../lib/lock', () => ({
   withWalletLock: vi.fn(async (_walletId: string, fn: () => Promise<any>) => fn()),
 }));
 
+vi.mock('../../lib/redlock', () => ({
+  distributedLockManager: {
+    acquireWalletLock: vi.fn().mockResolvedValue({ key: 'lock:test', value: 'token' }),
+    releaseWalletLock: vi.fn().mockResolvedValue(undefined),
+    releaseAll: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 vi.mock('../../lib/realtime', () => ({
   publishPaymentEvent: vi.fn().mockResolvedValue(undefined),
   publishDeliveryEvent: vi.fn().mockResolvedValue(undefined),

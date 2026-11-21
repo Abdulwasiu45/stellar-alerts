@@ -2,6 +2,7 @@ import * as StellarSdk from 'stellar-sdk';
 import crypto from 'crypto';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
+import { stellarNetwork } from '../../config/network';
 import { isValidEd25519PublicKey } from '@stellar-alerts/shared';
 
 /**
@@ -93,6 +94,8 @@ export interface Sep10Dependencies {
   webAuthDomain?: string;
 }
 
+/** Email domain of the synthetic users created for wallet-only (SEP-10) logins. */
+const SEP10_USER_EMAIL_DOMAIN = '@stellar-alerts.org';
 const DEFAULT_CHALLENGE_TIMEOUT_SECONDS = 300;
 /** Longest challenge lifetime accepted (SEP-10 recommends 15 minutes at most). */
 const MAX_CHALLENGE_LIFETIME_SECONDS = 900;
@@ -172,7 +175,8 @@ export class SEP10Service {
   ) {
     this.homeDomain = homeDomain || process.env.SEP10_HOME_DOMAIN || 'stellar-alerts.org';
     this.webAuthDomain = deps.webAuthDomain || process.env.SEP10_WEB_AUTH_DOMAIN || this.homeDomain;
-    this.networkPassphrase = networkPassphrase || process.env.STELLAR_NETWORK_PASSPHRASE || StellarSdk.Networks.TESTNET;
+    this.networkPassphrase =
+      networkPassphrase || process.env.STELLAR_NETWORK_PASSPHRASE || stellarNetwork.networkPassphrase;
     this.replayGuard = deps.replayGuard ?? new RedisReplayGuard();
     this.loadClientSigners = deps.loadClientSigners ?? loadSignersFromHorizon;
     this.issueSessionFn = deps.issueSession;
@@ -510,7 +514,10 @@ export class SEP10Service {
       throw new Sep10Error('Challenge transaction has already been used', 'CHALLENGE_REPLAYED');
     }
 
-    let wallet = await prisma.wallet.findUnique({
+    // Find the active linked wallet. Only auto-login into synthetic SEP-10
+    // accounts: a watch-only wallet entry must never log a stranger into
+    // another user's email account.
+    const wallet = await prisma.wallet.findUnique({
       where: { publicKey: clientPublicKey },
       include: { user: true },
     });
@@ -518,31 +525,43 @@ export class SEP10Service {
     let userId: string;
     let email: string;
 
-    if (wallet && wallet.user) {
+    if (
+      wallet &&
+      wallet.user &&
+      !(wallet as { deletedAt?: Date | null }).deletedAt &&
+      wallet.user.email.endsWith(SEP10_USER_EMAIL_DOMAIN)
+    ) {
       userId = wallet.user.id;
       email = wallet.user.email;
     } else {
-      // Find existing user with placeholder email or create new user
-      const placeholderEmail = `${clientPublicKey.substring(0, 12).toLowerCase()}@stellar-alerts.org`;
-      try {
-        const user = await prisma.user.create({
-          data: {
-            email: placeholderEmail,
-            wallets: {
-              create: {
-                publicKey: clientPublicKey,
-              },
+      const placeholderEmail = `${clientPublicKey.substring(0, 12).toLowerCase()}${SEP10_USER_EMAIL_DOMAIN}`;
+      const findPlaceholderUser = async () =>
+        typeof (prisma.user as { findUnique?: unknown }).findUnique === 'function'
+          ? prisma.user.findUnique({ where: { email: placeholderEmail } })
+          : null;
+
+      const existingSep10User = await findPlaceholderUser();
+      if (existingSep10User) {
+        userId = existingSep10User.id;
+        email = existingSep10User.email;
+      } else {
+        try {
+          const user = await prisma.user.create({
+            data: {
+              email: placeholderEmail,
+              // The key may already belong to another user's (or a deleted) wallet row.
+              ...(!wallet ? { wallets: { create: { publicKey: clientPublicKey } } } : {}),
             },
-          },
-        });
-        userId = user.id;
-        email = user.email;
-      } catch (err) {
-        // Two first-time logins racing on the same key: the loser reads the winner's row.
-        wallet = await prisma.wallet.findUnique({ where: { publicKey: clientPublicKey }, include: { user: true } });
-        if (!wallet?.user) throw err;
-        userId = wallet.user.id;
-        email = wallet.user.email;
+          });
+          userId = user.id;
+          email = user.email;
+        } catch (err) {
+          // Two first-time logins racing on the same key: the loser reads the winner's row.
+          const winner = await findPlaceholderUser();
+          if (!winner) throw err;
+          userId = winner.id;
+          email = winner.email;
+        }
       }
     }
 

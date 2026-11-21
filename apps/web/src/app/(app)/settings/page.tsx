@@ -2,7 +2,11 @@
 
 import { useCallback, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { EmailTemplatePreview } from '@/components/dashboard';
+import {
+  EmailTemplatePreview,
+  type EmailTemplateConfig,
+} from '@/components/dashboard';
+import { AudioAlertStudio } from '@/components/settings/AudioAlertStudio';
 import { useEmailTemplatePreference } from '@/hooks/useEmailTemplatePreference';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
@@ -125,6 +129,9 @@ export default function SettingsPage() {
           />
         </div>
       </div>
+
+      {/* Audio-Visual Alert Notification Studio */}
+      <AudioAlertStudio />
     </div>
   );
 }

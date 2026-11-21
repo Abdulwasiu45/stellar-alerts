@@ -148,14 +148,29 @@ export class PaymentsService {
           _count: { id: true },
         });
 
-    return {
-      totalReceived: result._sum.amount || 0,
-      paymentCount: result._count.id || 0,
-    };
+        const totalReceived = Number(result._sum.amount || 0);
+        const paymentCount = result._count.id || 0;
+
+        const summary: {
+          totalReceived: number;
+          totalVolumeXLM: number;
+          paymentCount: number;
+          totalPayments: number;
+          fiatConversion?: {
+            currency: string;
+            convertedTotal: number;
+            exchangeRate: number;
+          };
+        } = {
+          totalReceived,
+          totalVolumeXLM: totalReceived,
+          paymentCount,
+          totalPayments: paymentCount,
+        };
 
         if (fiatCurrency && isSupportedFiatCurrency(fiatCurrency)) {
           const conversion = await convertUsdToFiat(
-            totalReceivedUsd,
+            totalReceived,
             fiatCurrency as SupportedFiatCurrency,
           );
           summary.fiatConversion = {

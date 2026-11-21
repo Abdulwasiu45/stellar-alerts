@@ -152,19 +152,22 @@ describe('WalletsService', () => {
 
   describe('removeWallet', () => {
     it('removes wallet successfully when owned by the user', async () => {
-      vi.mocked(prisma.wallet.findUnique).mockResolvedValue({ id: 'w-1', userId: 'u-1' } as any);
-      vi.mocked(prisma.wallet.delete).mockResolvedValue({} as any);
+      vi.mocked(prisma.wallet.findUnique).mockResolvedValue({ id: 'w-1', userId: 'u-1', deletedAt: null } as any);
+      vi.mocked(prisma.wallet.update).mockResolvedValue({ id: 'w-1', deletedAt: new Date() } as any);
 
       const result = await walletsService.removeWallet('u-1', 'w-1');
       expect(result).toEqual({ success: true });
-      expect(prisma.wallet.delete).toHaveBeenCalledWith({ where: { id: 'w-1' } });
+      expect(prisma.wallet.update).toHaveBeenCalledWith({
+        where: { id: 'w-1' },
+        data: { deletedAt: expect.any(Date) },
+      });
     });
 
     it('throws "Wallet not found" when wallet belongs to another user', async () => {
-      vi.mocked(prisma.wallet.findUnique).mockResolvedValue({ id: 'w-1', userId: 'other-user' } as any);
+      vi.mocked(prisma.wallet.findUnique).mockResolvedValue({ id: 'w-1', userId: 'other-user', deletedAt: null } as any);
 
       await expect(walletsService.removeWallet('u-1', 'w-1')).rejects.toThrow('Wallet not found');
-      expect(prisma.wallet.delete).not.toHaveBeenCalled();
+      expect(prisma.wallet.update).not.toHaveBeenCalled();
     });
 
     it('throws "Wallet not found" when wallet does not exist', async () => {
@@ -174,10 +177,10 @@ describe('WalletsService', () => {
     });
 
     it('throws "Wallet not found" when Prisma P2025 error occurs on delete', async () => {
-      vi.mocked(prisma.wallet.findUnique).mockResolvedValue({ id: 'w-1', userId: 'u-1' } as any);
+      vi.mocked(prisma.wallet.findUnique).mockResolvedValue({ id: 'w-1', userId: 'u-1', deletedAt: null } as any);
       const notFoundError = new Error('Record not found') as any;
       notFoundError.code = 'P2025';
-      vi.mocked(prisma.wallet.delete).mockRejectedValue(notFoundError);
+      vi.mocked(prisma.wallet.update).mockRejectedValue(notFoundError);
 
       await expect(walletsService.removeWallet('u-1', 'w-1')).rejects.toThrow('Wallet not found');
     });

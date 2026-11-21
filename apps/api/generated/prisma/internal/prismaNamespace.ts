@@ -433,12 +433,14 @@ export const ModelName = {
   SecurityAuditLog: 'SecurityAuditLog',
   NotificationDelivery: 'NotificationDelivery',
   NotificationDeliveryAttempt: 'NotificationDeliveryAttempt',
+  DeduplicationLog: 'DeduplicationLog',
   DeadLetter: 'DeadLetter',
   WebhookSandboxReplay: 'WebhookSandboxReplay',
   DeadLetterAudit: 'DeadLetterAudit',
   MfaRecoveryCode: 'MfaRecoveryCode',
   RefreshSession: 'RefreshSession',
-  RefreshTokenHistory: 'RefreshTokenHistory'
+  RefreshTokenHistory: 'RefreshTokenHistory',
+  ContractWasmAudit: 'ContractWasmAudit'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -454,7 +456,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "apiKey" | "wallet" | "ingestionCursor" | "payment" | "paymentArchive" | "outboxEvent" | "notificationPreference" | "deliveryLog" | "paymentChecksum" | "dailyChecksumRoot" | "alertRule" | "alertRuleDispatchLog" | "telegramSyncCode" | "whatsAppDeliveryLog" | "webhook" | "webhookLog" | "webhookCircuitBreaker" | "exportJob" | "transactionSimulation" | "sorobanEventSnapshot" | "sorobanStateAudit" | "sorobanContractSubscription" | "sacTokenMintBurnEvent" | "sacTokenSupply" | "multisigTreasury" | "multisigSignerWatcher" | "pendingMultisigTransaction" | "anchorTransactionWatch" | "dexSwapWatch" | "sorobanTopicIndex" | "sorobanTopicIndexCursor" | "dexSwapEvent" | "securityAuditLog" | "notificationDelivery" | "notificationDeliveryAttempt" | "deadLetter" | "webhookSandboxReplay" | "deadLetterAudit" | "mfaRecoveryCode" | "refreshSession" | "refreshTokenHistory"
+    modelProps: "user" | "apiKey" | "wallet" | "ingestionCursor" | "payment" | "paymentArchive" | "outboxEvent" | "notificationPreference" | "deliveryLog" | "paymentChecksum" | "dailyChecksumRoot" | "alertRule" | "alertRuleDispatchLog" | "telegramSyncCode" | "whatsAppDeliveryLog" | "webhook" | "webhookLog" | "webhookCircuitBreaker" | "exportJob" | "transactionSimulation" | "sorobanEventSnapshot" | "sorobanStateAudit" | "sorobanContractSubscription" | "sacTokenMintBurnEvent" | "sacTokenSupply" | "multisigTreasury" | "multisigSignerWatcher" | "pendingMultisigTransaction" | "anchorTransactionWatch" | "dexSwapWatch" | "sorobanTopicIndex" | "sorobanTopicIndexCursor" | "dexSwapEvent" | "securityAuditLog" | "notificationDelivery" | "notificationDeliveryAttempt" | "deduplicationLog" | "deadLetter" | "webhookSandboxReplay" | "deadLetterAudit" | "mfaRecoveryCode" | "refreshSession" | "refreshTokenHistory" | "contractWasmAudit"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -3122,6 +3124,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    DeduplicationLog: {
+      payload: Prisma.$DeduplicationLogPayload<ExtArgs>
+      fields: Prisma.DeduplicationLogFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.DeduplicationLogFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.DeduplicationLogFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        findFirst: {
+          args: Prisma.DeduplicationLogFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.DeduplicationLogFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        findMany: {
+          args: Prisma.DeduplicationLogFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>[]
+        }
+        create: {
+          args: Prisma.DeduplicationLogCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        createMany: {
+          args: Prisma.DeduplicationLogCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.DeduplicationLogCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>[]
+        }
+        delete: {
+          args: Prisma.DeduplicationLogDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        update: {
+          args: Prisma.DeduplicationLogUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        deleteMany: {
+          args: Prisma.DeduplicationLogDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.DeduplicationLogUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.DeduplicationLogUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>[]
+        }
+        upsert: {
+          args: Prisma.DeduplicationLogUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeduplicationLogPayload>
+        }
+        aggregate: {
+          args: Prisma.DeduplicationLogAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDeduplicationLog>
+        }
+        groupBy: {
+          args: Prisma.DeduplicationLogGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DeduplicationLogGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.DeduplicationLogCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DeduplicationLogCountAggregateOutputType> | number
+        }
+      }
+    }
     DeadLetter: {
       payload: Prisma.$DeadLetterPayload<ExtArgs>
       fields: Prisma.DeadLetterFieldRefs
@@ -3566,6 +3642,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    ContractWasmAudit: {
+      payload: Prisma.$ContractWasmAuditPayload<ExtArgs>
+      fields: Prisma.ContractWasmAuditFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ContractWasmAuditFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ContractWasmAuditFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>
+        }
+        findFirst: {
+          args: Prisma.ContractWasmAuditFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ContractWasmAuditFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>
+        }
+        findMany: {
+          args: Prisma.ContractWasmAuditFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>[]
+        }
+        create: {
+          args: Prisma.ContractWasmAuditCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>
+        }
+        createMany: {
+          args: Prisma.ContractWasmAuditCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ContractWasmAuditCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>[]
+        }
+        delete: {
+          args: Prisma.ContractWasmAuditDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>
+        }
+        update: {
+          args: Prisma.ContractWasmAuditUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>
+        }
+        deleteMany: {
+          args: Prisma.ContractWasmAuditDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ContractWasmAuditUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ContractWasmAuditUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>[]
+        }
+        upsert: {
+          args: Prisma.ContractWasmAuditUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractWasmAuditPayload>
+        }
+        aggregate: {
+          args: Prisma.ContractWasmAuditAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateContractWasmAudit>
+        }
+        groupBy: {
+          args: Prisma.ContractWasmAuditGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ContractWasmAuditGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ContractWasmAuditCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ContractWasmAuditCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -3864,6 +4014,8 @@ export type WebhookScalarFieldEnum = (typeof WebhookScalarFieldEnum)[keyof typeo
 export const WebhookLogScalarFieldEnum = {
   id: 'id',
   webhookId: 'webhookId',
+  requestUrl: 'requestUrl',
+  requestPayload: 'requestPayload',
   statusCode: 'statusCode',
   responseBody: 'responseBody',
   durationMs: 'durationMs',
@@ -4165,6 +4317,17 @@ export const NotificationDeliveryAttemptScalarFieldEnum = {
 export type NotificationDeliveryAttemptScalarFieldEnum = (typeof NotificationDeliveryAttemptScalarFieldEnum)[keyof typeof NotificationDeliveryAttemptScalarFieldEnum]
 
 
+export const DeduplicationLogScalarFieldEnum = {
+  txHash: 'txHash',
+  operationIndex: 'operationIndex',
+  eventHash: 'eventHash',
+  detectedAt: 'detectedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type DeduplicationLogScalarFieldEnum = (typeof DeduplicationLogScalarFieldEnum)[keyof typeof DeduplicationLogScalarFieldEnum]
+
+
 export const DeadLetterScalarFieldEnum = {
   id: 'id',
   deliveryKey: 'deliveryKey',
@@ -4263,6 +4426,25 @@ export const RefreshTokenHistoryScalarFieldEnum = {
 } as const
 
 export type RefreshTokenHistoryScalarFieldEnum = (typeof RefreshTokenHistoryScalarFieldEnum)[keyof typeof RefreshTokenHistoryScalarFieldEnum]
+
+
+export const ContractWasmAuditScalarFieldEnum = {
+  id: 'id',
+  contractId: 'contractId',
+  wasmHash: 'wasmHash',
+  byteSize: 'byteSize',
+  exportedFunctions: 'exportedFunctions',
+  isVerified: 'isVerified',
+  auditRegistry: 'auditRegistry',
+  sourceRepo: 'sourceRepo',
+  auditReportUrl: 'auditReportUrl',
+  verifiedAt: 'verifiedAt',
+  lastCheckedAt: 'lastCheckedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContractWasmAuditScalarFieldEnum = (typeof ContractWasmAuditScalarFieldEnum)[keyof typeof ContractWasmAuditScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -4596,12 +4778,14 @@ export type GlobalOmitConfig = {
   securityAuditLog?: Prisma.SecurityAuditLogOmit
   notificationDelivery?: Prisma.NotificationDeliveryOmit
   notificationDeliveryAttempt?: Prisma.NotificationDeliveryAttemptOmit
+  deduplicationLog?: Prisma.DeduplicationLogOmit
   deadLetter?: Prisma.DeadLetterOmit
   webhookSandboxReplay?: Prisma.WebhookSandboxReplayOmit
   deadLetterAudit?: Prisma.DeadLetterAuditOmit
   mfaRecoveryCode?: Prisma.MfaRecoveryCodeOmit
   refreshSession?: Prisma.RefreshSessionOmit
   refreshTokenHistory?: Prisma.RefreshTokenHistoryOmit
+  contractWasmAudit?: Prisma.ContractWasmAuditOmit
 }
 
 /* Types for Logging */

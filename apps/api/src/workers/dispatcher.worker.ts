@@ -1,7 +1,16 @@
-import { Job, Worker, Queue } from 'bullmq';
+import https from 'node:https';
+import { Worker, type ConnectionOptions } from 'bullmq';
 import { redis, registerRedisCleanupTask } from '../lib/redis';
 import { createLogger } from '../lib/logger';
+import {
+  QueueLaneManager,
+  type QueueLane,
+  QUEUE_LANE_CONFIGS,
+  resolveLaneForAlert,
+} from '../lib/queue-lanes';
+import { fairShareQueueScheduler, SUBSCRIBER_TIERS } from '../lib/queue/fair-scheduler';
 import { RedisCircuitBreaker, CircuitBreakerOpenError } from '../modules/alerts/circuit-breaker';
+import { isChatSnoozed } from '../modules/telegram/commands/snooze';
 import { webhookTelemetry } from '../modules/webhooks/webhook-telemetry';
 import {
   ssrfFilter,
@@ -23,6 +32,10 @@ export interface WebhookDispatchJobData {
   lane?: QueueLane;
   /** Severity of the underlying alert rule (critical/high/standard/bulk). */
   severity?: string;
+  /** Tenant/subscriber ID for fair scheduling */
+  tenantId?: string;
+  /** Subscriber tier for rate limiting (free/professional/enterprise) */
+  subscriberTier?: string;
 }
 
 export interface WebhookDispatchResult {
@@ -46,18 +59,19 @@ export class DispatcherWorker {
   private circuitBreaker: RedisCircuitBreaker;
   private workers: Map<QueueLane, Worker<WebhookDispatchJobData>> = new Map();
   private transport: WebhookTransportFn;
-  private sssfFilter: SssfFilter;
+  private ssrfFilter: SsrfFilter;
   private laneManager: QueueLaneManager;
 
   constructor(
     circuitBreaker?: RedisCircuitBreaker,
     transport?: WebhookTransportFn,
-    filter?: SssfFilter,
+    filter?: SsrfFilter,
     laneManager?: QueueLaneManager
   ) {
     this.circuitBreaker = circuitBreaker || new RedisCircuitBreaker();
     this.transport = transport || this.defaultTransport.bind(this);
     this.ssrfFilter = filter || ssrfFilter;
+    this.laneManager = laneManager || new QueueLaneManager();
   }
 
   private async defaultTransport(
@@ -66,30 +80,97 @@ export class DispatcherWorker {
     headers: Record<string, string>,
     pinnedTarget?: PinnedWebhookTarget
   ) {
-    const target = pinnedTarget ?? (await this.sssfFilter.validateAndResolve(url));
-    const connectUrl = target.parsedUrl.protocol === 'http:' ? target.pinnedUrl : url;
-    const res = await fetch(connectUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Host: target.hostHeader,
-        'X-Validated-Egress-IP': target.pinnedId,
-        ...headers,
-      },
-      body: payload,
-      redirect: 'manual',
+    const target = pinnedTarget ?? (await this.ssrfFilter.validateAndResolve(url));
+
+    if (target.parsedUrl.protocol === 'http:') {
+      const res = await fetch(target.pinnedUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Host: target.hostHeader,
+          'X-Validated-Egress-IP': target.pinnedIp,
+          ...headers,
+        },
+        body: payload,
+        redirect: 'manual',
+      });
+      return { status: res.status, body: await res.text() };
+    }
+
+    return this.postHttpsPinned(target, payload, headers);
+  }
+
+  /** HTTPS POST that connects ONLY to the already-validated IP (stops DNS rebinding). */
+  private postHttpsPinned(
+    target: PinnedWebhookTarget,
+    payload: string,
+    headers: Record<string, string>
+  ): Promise<{ status: number; body?: string }> {
+    return new Promise((resolve, reject) => {
+      const { parsedUrl, pinnedIp } = target;
+      const family = pinnedIp.includes(':') ? 6 : 4;
+
+      const req = https.request(
+        {
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || 443,
+          path: parsedUrl.pathname + parsedUrl.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            ...headers,
+          },
+          // Always connect to the validated IP, never re-resolve DNS.
+          lookup: (_host: string, opts: any, cb: any) => {
+            if (opts && opts.all) return cb(null, [{ address: pinnedIp, family }]);
+            return cb(null, pinnedIp, family);
+          },
+          timeout: 10000,
+        },
+        (res) => {
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => (body += chunk));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+        }
+      );
+
+      req.on('timeout', () => req.destroy(new Error('Webhook request timed out')));
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
     });
-    return { status: res.status, body: await res.text() };
   }
 
   /**
    * Processes a single webhook dispatch job.
-   * 1. Checks circuit breaker state.
-   * 2. Validates target URL and resolves/pins IP via SssfFilter (rejecting private/internal IPs).
-   * 3. Dispatches webhook with pinned IP target.
+   * 1. Checks fair scheduling limits per tenant.
+   * 2. Checks circuit breaker state.
+   * 3. Validates target URL and resolves/pins IP via SsrfFilter (rejecting private/internal IPs).
+   * 4. Dispatches webhook with pinned IP target.
    */
   public async processJob(job: { data: WebhookDispatchJobData }): Promise<WebhookDispatchResult> {
-    const { webhookId, url, payload, headers = {}, paymentId } = job.data;
+    const { webhookId, url, payload, headers = {}, paymentId, tenantId, subscriberTier } = job.data;
+    const lane: QueueLane = job.data.lane ?? resolveLaneForAlert(job.data);
+
+    // Fair scheduling check: prevent tenant monopolization
+    if (tenantId) {
+      const tierName = subscriberTier || 'professional';
+      const tier = SUBSCRIBER_TIERS[tierName] || SUBSCRIBER_TIERS.professional;
+
+      const canSchedule = await fairShareQueueScheduler.canScheduleJob(tenantId, tierName, 0);
+
+      if (!canSchedule.canProcess) {
+        log.debug(
+          { webhookId, tenantId, waitTimeMs: canSchedule.waitTimeMs, lane },
+          '⏳ Webhook deferred due to subscriber rate limit',
+        );
+        // Defer this job with exponential backoff
+        const delayMs = Math.min(canSchedule.waitTimeMs, 5000) + 100;
+        throw new Error(`Rate limited, retry after ${delayMs}ms`);
+      }
+    }
 
     // Check circuit breaker state first
     const canSend = await this.circuitBreaker.canExecute(webhookId);
@@ -106,11 +187,26 @@ export class DispatcherWorker {
       };
     }
 
+    // Check if destination Telegram chat is currently snoozed (#896)
+    const tgChatId = payload?.telegramChatId || payload?.chat_id || (job.data as any).telegramChatId;
+    if (tgChatId && (await isChatSnoozed(String(tgChatId)))) {
+      log.info(
+        { webhookId, chatId: tgChatId, lane },
+        '[DispatcherWorker] Telegram destination chat is snoozed; skipping delivery',
+      );
+      return {
+        webhookId,
+        status: 'skipped',
+        reason: 'telegram_chat_snoozed',
+        lane,
+      };
+    }
+
     let pinnedTarget: PinnedWebhookTarget;
     try {
-      pinnedTarget = await this.sssfFilter.validateAndResolve(url);
+      pinnedTarget = await this.ssrfFilter.validateAndResolve(url);
     } catch (err: any) {
-      const statusCode = err instanceof SssfBlockedError ? err.statusCode : 400;
+      const statusCode = err instanceof SsrfBlockedError ? err.statusCode : 400;
       log.error(
         { webhookId, url, reason: err.reason ?? err.message, statusCode, lane },
         '[SECURITY_AUDIT] Blocked webhook dispatch due to SSRF egress policy'
@@ -131,7 +227,7 @@ export class DispatcherWorker {
         url,
         async () => {
           return await this.circuitBreaker.execute(webhookId, async () => {
-            const response = await this.transport(url, payloadStr, headers);
+            const response = await this.transport(url, payloadStr, headers, pinnedTarget);
             if (response.status >= 500) {
               const err: any = new Error(`Server returned HTTP ${response.status}`);
               err.statusCode = response.status;
@@ -148,6 +244,7 @@ export class DispatcherWorker {
         status: 'delivered',
         statusCode: res.status,
         durationMs,
+        pinnedIp: pinnedTarget.pinnedIp,
         lane,
       };
     } catch (err: any) {
@@ -186,7 +283,7 @@ export class DispatcherWorker {
       const worker = new Worker<WebhookDispatchJobData>(
         queueName,
         async (job) => this.processJob(job),
-        { connection: redis, concurrency: config.concurrency }
+        { connection: redis as unknown as ConnectionOptions, concurrency: config.concurrency }
       );
 
       worker.on('failed', (job, error) => {
@@ -221,6 +318,11 @@ export class DispatcherWorker {
   /** Returns the lane manager used by this worker (for metrics/integration tests). */
   public getLaneManager(): QueueLaneManager {
     return this.laneManager;
+  }
+
+  /** Returns fair scheduling statistics */
+  public getFairSchedulingStats() {
+    return fairShareQueueScheduler.getStats();
   }
 }
 

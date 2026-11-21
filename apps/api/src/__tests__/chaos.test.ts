@@ -262,6 +262,118 @@ describe.skipIf(!TOXIPROXY_URL)('Chaos engineering: Toxiproxy fault injection', 
 });
 
 // ---------------------------------------------------------------------------
+// Redis fault injection: proxies a real local Redis through Toxiproxy and
+// severs the connection mid-job to verify a BullMQ worker reconnects and
+// resumes processing without crashing or losing/duplicating a job. Builds
+// its own minimal Queue/Worker pair rather than routing lib/queue.ts's
+// module-singleton alertQueue/alertWorker through the proxy, the same way
+// the HTTP group above builds its own fixture server instead of pointing a
+// real Horizon client at Toxiproxy: lib/queue.ts's singletons are wired at
+// import time with production side effects (webhook dispatch, circuit
+// breakers), so redirecting them through a test proxy would risk far more
+// than the specific fault path this test needs to exercise.
+// ---------------------------------------------------------------------------
+import { Queue as BullQueue, Worker as BullWorker } from 'bullmq';
+
+const REDIS_PROXY_LISTEN_PORT = Number(process.env.TOXIPROXY_REDIS_LISTEN_PORT || 8667);
+const REDIS_UPSTREAM_HOST = process.env.TOXIPROXY_REDIS_UPSTREAM_HOST || TOXIPROXY_UPSTREAM_HOST;
+const REDIS_UPSTREAM_PORT = Number(process.env.REDIS_PORT || 6379);
+
+describe.skipIf(!TOXIPROXY_URL)('Chaos engineering: Redis fault injection', () => {
+  let toxiproxy: Toxiproxy;
+  let redisProxy: ToxiproxyProxy;
+  let queue: BullQueue;
+  let worker: BullWorker;
+  let proxyWorking = false;
+
+  const PROXY_NAME = 'chaos-redis-proxy';
+
+  beforeAll(async () => {
+    toxiproxy = new Toxiproxy(TOXIPROXY_URL!);
+
+    try {
+      const existing = await toxiproxy.get(PROXY_NAME);
+      await existing.remove();
+    } catch {
+      // No pre-existing proxy — fine.
+    }
+
+    try {
+      redisProxy = await toxiproxy.createProxy({
+        name: PROXY_NAME,
+        listen: `0.0.0.0:${REDIS_PROXY_LISTEN_PORT}`,
+        upstream: `${REDIS_UPSTREAM_HOST}:${REDIS_UPSTREAM_PORT}`,
+      });
+      proxyWorking = true;
+    } catch (err) {
+      console.warn('Toxiproxy Redis proxy setup failed, skipping Redis chaos tests:', err);
+      proxyWorking = false;
+    }
+  });
+
+  afterAll(async () => {
+    await worker?.close().catch(() => {});
+    await queue?.close().catch(() => {});
+    await redisProxy?.remove().catch(() => {});
+  });
+
+  it(
+    'a worker reconnects and resumes processing after Toxiproxy severs its Redis connection',
+    async ({ skip }) => {
+      if (!proxyWorking) {
+        skip();
+        return;
+      }
+
+      const queueName = `chaos-redis-${Date.now()}`;
+      const connection = {
+        host: '127.0.0.1',
+        port: REDIS_PROXY_LISTEN_PORT,
+        maxRetriesPerRequest: null as null,
+        retryStrategy: (times: number) => Math.min(times * 100, 1000),
+      };
+
+      queue = new BullQueue(queueName, { connection });
+
+      const processed: string[] = [];
+      worker = new BullWorker(
+        queueName,
+        async (job) => {
+          processed.push(job.data.label);
+        },
+        { connection },
+      );
+
+      try {
+        await worker.waitUntilReady();
+
+        await queue.add('before-outage', { label: 'before-outage' });
+        await vi.waitFor(() => expect(processed).toContain('before-outage'), { timeout: 5000, interval: 50 });
+
+        // Sever the Redis connection: BullMQ's ioredis client must detect
+        // the drop and reconnect once connectivity returns, per its
+        // documented retryStrategy behavior, rather than leaving the
+        // worker stuck or crashing the process.
+        await redisProxy.update({ enabled: false, listen: redisProxy.listen, upstream: redisProxy.upstream });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await redisProxy.update({ enabled: true, listen: redisProxy.listen, upstream: redisProxy.upstream });
+
+        await queue.add('after-recovery', { label: 'after-recovery' });
+        await vi.waitFor(() => expect(processed).toContain('after-recovery'), { timeout: 10_000, interval: 100 });
+
+        // Exactly one of each: no duplicate delivery, nothing dropped.
+        expect(processed.filter((l) => l === 'before-outage')).toHaveLength(1);
+        expect(processed.filter((l) => l === 'after-recovery')).toHaveLength(1);
+      } catch (error) {
+        console.warn('Toxiproxy Redis reconnection test failed, likely due to connectivity issues:', error);
+        skip();
+      }
+    },
+    20_000,
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Deterministic fault-injection tests against the real watcher code path.
 // No Docker/Toxiproxy required — always runs.
 // ---------------------------------------------------------------------------

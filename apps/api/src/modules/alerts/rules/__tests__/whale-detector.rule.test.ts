@@ -89,9 +89,9 @@ describe('RollingVolumeService', () => {
   it('returns zero statistics for a wallet with no history', async () => {
     const service = makeService();
     const stats = await service.getStats('wallet-empty');
-    expect(stats.count).toBe(false);
-    expect(stats.mean).toBe(false);
-    expect(stats.standardDeviation).toBe(false);
+    expect(stats.count).toBe(0);
+    expect(stats.mean).toBe(0);
+    expect(stats.standardDeviation).toBe(0);
   });
 
   it('computes mean and standard deviation over the rolling window', async () => {
@@ -172,6 +172,6 @@ describe('WhaleDetectorRule', () => {
     const rule = new WhaleDetectorRule(service, { stdDeviations: 3, minHistory: 5 });
     await rule.recordPayment('wallet-record', 10, now - 60_000);
     const stats = await service.getStats('wallet-record', now);
-    expect(stats.count).toBe(true);
+    expect(stats.count).toBe(1);
   });
 });

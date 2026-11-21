@@ -446,6 +446,44 @@ describe('SEP-0010 Stellar Web Authentication API (#634)', () => {
     });
   });
 
+  describe('wallet ownership', () => {
+    it('does not log into a real user account that merely tracks the wallet', async () => {
+      const client = StellarSdk.Keypair.random();
+      mockPrisma.wallet.findUnique.mockResolvedValue({
+        id: 'watch-only',
+        publicKey: client.publicKey(),
+        deletedAt: null,
+        user: { id: 'victim', email: 'victim@example.com' },
+      });
+      mockPrisma.user.create.mockResolvedValue({
+        id: 'sep10-user',
+        email: `${client.publicKey().substring(0, 12).toLowerCase()}@stellar-alerts.org`,
+      });
+
+      const session = await sep10Service.verifyAndIssueSession(signedChallenge(client));
+
+      expect(session.user.id).toBe('sep10-user');
+      expect(session.user.id).not.toBe('victim');
+      // The key already belongs to another user's wallet row, so none is linked to the new user.
+      expect(mockPrisma.user.create.mock.calls[0][0].data).not.toHaveProperty('wallets');
+    });
+
+    it('does not reuse a soft-deleted wallet', async () => {
+      const client = StellarSdk.Keypair.random();
+      mockPrisma.wallet.findUnique.mockResolvedValue({
+        id: 'deleted',
+        publicKey: client.publicKey(),
+        deletedAt: new Date(),
+        user: { id: 'old-user', email: 'old@stellar-alerts.org' },
+      });
+      mockPrisma.user.create.mockResolvedValue({ id: 'fresh', email: 'fresh@stellar-alerts.org' });
+
+      const session = await sep10Service.verifyAndIssueSession(signedChallenge(client));
+
+      expect(session.user.id).toBe('fresh');
+    });
+  });
+
   describe('replay protection', () => {
     it('lets a signed challenge be redeemed only once', async () => {
       const client = StellarSdk.Keypair.random();

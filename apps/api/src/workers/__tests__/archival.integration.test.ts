@@ -2,7 +2,9 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "../../lib/prisma";
 import { archivalWorker } from "../archival.worker";
 import { partitionService } from "../../modules/maintenance/partition.service";
-import { Decimal } from "@prisma/client/runtime/library";
+import { Prisma } from "../../../generated/prisma/client";
+
+const Decimal = Prisma.Decimal;
 
 describe("ArchivalWorker Integration Tests", () => {
   const testWalletId = "test-wallet-archival-" + Date.now();

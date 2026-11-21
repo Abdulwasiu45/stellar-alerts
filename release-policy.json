@@ -34,6 +34,12 @@
   "failOnVulnerabilitySeverities": ["CRITICAL", "HIGH"],
   "exceptions": [
     {
+      "package": "@types/methods",
+      "version": "1.1.4",
+      "license": "UNKNOWN",
+      "reason": "Legacy DefinitelyTyped package published without a license field in package-lock metadata. DefinitelyTyped definitions are MIT licensed."
+    },
+    {
       "package": "esprima",
       "version": "1.2.5",
       "license": "UNKNOWN",
