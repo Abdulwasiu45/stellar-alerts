@@ -10,6 +10,8 @@ export * from './merkle';
 // Single source of truth for Stellar StrKey / transaction-hash validation
 // (Ed25519 public keys, contract IDs, muxed addresses, transaction hashes).
 export * from './strkey';
+// Request / response contracts for authentication flows (SEP-0010).
+export * from './schemas/auth';
 
 const dateDTO = z.union([z.date(), z.string()]);
 
