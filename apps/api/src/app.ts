@@ -29,6 +29,7 @@ import { exportsRoutes } from "./modules/exports/exports.routes";
 import { simulationRoutes } from "./modules/simulation/simulation.routes";
 import { adminRoutes } from "./modules/admin/admin.routes";
 import { auditRoutes } from "./modules/audit/audit.routes";
+import { anchorRoutes } from "./modules/stellar/anchor.routes";
 import { openApiOptions } from "./openapi.config";
 import { loggerOptions } from "./lib/logger";
 import { env } from "./config/env";
@@ -175,6 +176,7 @@ export const buildApp = async () => {
   app.register(discordInteractionsRoutes);
   app.register(adminRoutes);
   app.register(auditRoutes);
+  app.register(anchorRoutes);
 
   return app;
 };

@@ -10,6 +10,7 @@
     "dev:indexer": "tsx watch --env-file=.env src/workers/soroban-indexer.worker.ts",
     "indexer:benchmark": "tsx --env-file=.env src/workers/soroban-indexer.worker.ts benchmark",
     "dev:exports": "tsx watch --env-file=.env src/workers/export.worker.ts",
+    "dev:anchor": "tsx watch --env-file=.env src/workers/anchor.worker.ts",
     "dev:archival": "tsx watch --env-file=.env src/workers/archival.worker.ts",
     "dev:supervisor": "tsx --env-file=.env src/workers/supervisor.ts",
     "dev:checksum-worker": "tsx watch --env-file=.env src/workers/checksum-chain.worker.ts",

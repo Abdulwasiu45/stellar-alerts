@@ -1,11 +1,8 @@
 import { prisma } from '../../lib/prisma';
 import { stellar } from '../../lib/stellar';
 import { redisCache } from '../../lib/redis';
-import { dispatchWebhookAndLog } from '../../lib/queue';
-import { fetchWithTimeout } from '../../lib/external-request';
 import { createLogger } from '../../lib/logger';
-import { decryptPersonalField } from '../../utils/privacy';
-import { env } from '../../config/env';
+import { deliverUserAlert, escapeTelegramHtml } from './alert-delivery';
 
 const log = createLogger({ module: 'TrustlineSentinel' });
 
@@ -314,21 +311,15 @@ export function buildTrustlineWebhookPayload(alert: TrustlineAlert) {
   return { event: 'trustline.alert', ...alert };
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[char] ?? char);
-}
-
 export function buildTrustlineTelegramMessage(alert: TrustlineAlert): string {
   const tag = alert.severity === 'CRITICAL' ? '🚨 <b>CRITICAL</b>' : '⚠️ <b>WARNING</b>';
   return [
     `${tag} — Stellar trustline alert`,
-    `<b>Event:</b> ${escapeHtml(alert.eventType)}`,
-    `<b>Asset:</b> ${escapeHtml(alert.assetCode)}`,
-    `<b>Account:</b> <code>${escapeHtml(alert.account)}</code>`,
-    escapeHtml(alert.message),
-    alert.transactionHash ? `<b>Transaction:</b> <code>${escapeHtml(alert.transactionHash)}</code>` : '',
+    `<b>Event:</b> ${escapeTelegramHtml(alert.eventType)}`,
+    `<b>Asset:</b> ${escapeTelegramHtml(alert.assetCode)}`,
+    `<b>Account:</b> <code>${escapeTelegramHtml(alert.account)}</code>`,
+    escapeTelegramHtml(alert.message),
+    alert.transactionHash ? `<b>Transaction:</b> <code>${escapeTelegramHtml(alert.transactionHash)}</code>` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -336,59 +327,17 @@ export function buildTrustlineTelegramMessage(alert: TrustlineAlert): string {
 
 export type TrustlineAlertNotifier = (alert: TrustlineAlert) => Promise<void> | void;
 
-/**
- * Delivers an alert to the wallet owner(s): every active webhook (with the
- * usual delivery log + circuit breaker handling) and Telegram when linked.
- */
+/** Delivers an alert to the owner(s) of the affected wallet (webhooks + Telegram). */
 export const deliverTrustlineAlert: TrustlineAlertNotifier = async (alert) => {
   const wallets = await prisma.wallet.findMany({
     where: { publicKey: alert.account, deletedAt: null },
-    include: {
-      user: {
-        include: {
-          webhooks: { where: { isActive: true }, select: { id: true } },
-          notifyPrefs: true,
-        },
-      },
-    },
+    select: { userId: true },
   });
 
   const payload = buildTrustlineWebhookPayload(alert);
-
-  for (const wallet of wallets) {
-    const user = wallet.user;
-
-    for (const webhook of user.webhooks) {
-      try {
-        await dispatchWebhookAndLog(webhook.id, payload);
-      } catch (err: unknown) {
-        log.warn(`Webhook ${webhook.id} dispatch failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-
-    const prefs = user.notifyPrefs;
-    const chatId = prefs?.telegramEnabled ? decryptPersonalField(prefs.telegramChatId) : null;
-    if (chatId && env.TELEGRAM_BOT_TOKEN) {
-      try {
-        await fetchWithTimeout(
-          `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: buildTrustlineTelegramMessage(alert),
-              parse_mode: 'HTML',
-            }),
-          },
-          env.NOTIFICATION_PROVIDER_TIMEOUT_MS,
-          undefined,
-          'Telegram',
-        );
-      } catch (err: unknown) {
-        log.warn(`Telegram trustline alert failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
+  const text = buildTrustlineTelegramMessage(alert);
+  for (const userId of new Set(wallets.map((wallet) => wallet.userId))) {
+    await deliverUserAlert(userId, payload, text);
   }
 };
 

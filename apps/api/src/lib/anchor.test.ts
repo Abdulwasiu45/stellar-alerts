@@ -24,6 +24,11 @@ describe('anchor SEP-24/SEP-31 status fetching', () => {
             amount_in: '100.00',
             amount_out: '98.50',
             more_info_url: 'https://anchor.example.com/info/tx-1',
+            kind: 'withdrawal',
+            withdraw_anchor_account: 'GANCHORACCOUNT',
+            withdraw_memo: '123456',
+            withdraw_memo_type: 'id',
+            stellar_transaction_id: 'stellar-hash-1',
           },
         }),
       }) as any;
@@ -37,6 +42,11 @@ describe('anchor SEP-24/SEP-31 status fetching', () => {
         amountIn: '100.00',
         amountOut: '98.50',
         moreInfoUrl: 'https://anchor.example.com/info/tx-1',
+        kind: 'withdrawal',
+        anchorAccount: 'GANCHORACCOUNT',
+        memo: '123456',
+        memoType: 'id',
+        stellarTransactionId: 'stellar-hash-1',
       });
     });
 

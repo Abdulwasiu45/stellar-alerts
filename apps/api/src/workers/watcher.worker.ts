@@ -27,6 +27,7 @@ import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker
 import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { runTrustlineSentinelPass } from '../modules/stellar/trustline-sentinel.service';
+import { anchorLifecycleWatcher } from '../modules/stellar/anchor-watcher.service';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -284,6 +285,23 @@ export async function processPaymentRecord(
 
       if (!payment) {
         throw new Error(`Payment ${txHash} was not available after its transactional insert`);
+      }
+
+      if (isNewPayment && memo) {
+        // Link the on-chain leg to a registered SEP-24 / SEP-31 anchor transfer.
+        // Best-effort: anchor correlation must never block payment ingestion.
+        try {
+          await anchorLifecycleWatcher.correlatePayment({
+            txHash,
+            from: fromAddress,
+            to: isHorizonPayment(record) ? record.to : wallet.publicKey,
+            memo,
+            memoType: (record as { memo_type?: string }).memo_type,
+            userId: wallet.userId,
+          });
+        } catch (err: unknown) {
+          log.warn(`[WatcherWorker] Anchor correlation failed for ${txHash}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       if (isNewPayment && payment) {

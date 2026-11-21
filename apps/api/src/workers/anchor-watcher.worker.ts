@@ -3,6 +3,11 @@ import { fetchAnchorTransactionStatus, isTerminalAnchorStatus, AnchorProtocol } 
 import { registerSupervisorHeartbeat } from './supervisor';
 import { WorkerLifecycleManager } from '../lib/worker-lifecycle';
 
+/**
+ * @deprecated Status-only polling. Use anchor.worker.ts, which runs the unified
+ * AnchorLifecycleWatcher (modules/stellar/anchor-watcher.service.ts) with
+ * transition history, memo correlation and notifications. Do not run both.
+ */
 export const anchorWatcherLifecycle = new WorkerLifecycleManager({
   workerName: 'AnchorWatcher',
   drainTimeoutMs: 10_000,
