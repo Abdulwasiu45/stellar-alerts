@@ -15,6 +15,15 @@ export interface AnchorTransactionStatus {
   amountOut?: string | null;
   /** SEP-24 only: URL the user should visit to complete an interactive step. */
   moreInfoUrl?: string | null;
+  /** "deposit" | "withdrawal" (SEP-24) or "payment" (SEP-31). */
+  kind?: string | null;
+  /** The anchor's Stellar account for the on-chain leg of this transfer. */
+  anchorAccount?: string | null;
+  /** Memo that ties the on-chain payment to this anchor transaction. */
+  memo?: string | null;
+  memoType?: string | null;
+  /** Hash of the Stellar transaction the anchor reports for this transfer. */
+  stellarTransactionId?: string | null;
 }
 
 /** SEP-24 transaction states that represent the fiat flow moving forward. */
@@ -76,6 +85,13 @@ export async function fetchSep24TransactionStatus(
       amountIn: tx.amount_in ?? null,
       amountOut: tx.amount_out ?? null,
       moreInfoUrl: tx.more_info_url ?? null,
+      kind: tx.kind ?? null,
+      // Withdrawals: the user pays the anchor's account with the given memo.
+      // Deposits: the anchor pays the user, echoing the user-supplied memo.
+      anchorAccount: tx.withdraw_anchor_account ?? null,
+      memo: tx.withdraw_memo ?? tx.deposit_memo ?? null,
+      memoType: tx.withdraw_memo_type ?? tx.deposit_memo_type ?? null,
+      stellarTransactionId: tx.stellar_transaction_id ?? null,
     };
   } catch (error: any) {
     console.error(`[Anchor] Error fetching SEP-24 transaction ${anchorTxId}:`, error?.message || error);
@@ -118,6 +134,11 @@ export async function fetchSep31TransactionStatus(
       amountIn: tx.amount_in ?? null,
       amountOut: tx.amount_out ?? null,
       moreInfoUrl: null,
+      kind: 'payment',
+      anchorAccount: tx.stellar_account_id ?? null,
+      memo: tx.stellar_memo ?? null,
+      memoType: tx.stellar_memo_type ?? null,
+      stellarTransactionId: tx.stellar_transaction_id ?? null,
     };
   } catch (error: any) {
     console.error(`[Anchor] Error fetching SEP-31 transaction ${anchorTxId}:`, error?.message || error);

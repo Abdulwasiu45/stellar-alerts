@@ -27,6 +27,8 @@ import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
 import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
+import { runTrustlineSentinelPass } from '../modules/stellar/trustline-sentinel.service';
+import { anchorLifecycleWatcher } from '../modules/stellar/anchor-watcher.service';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
 import { deduplicationPipeline } from '../lib/deduplicator';
 import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
@@ -365,6 +367,23 @@ export async function processPaymentRecord(
 
       if (!payment) {
         throw new Error(`Payment ${txHash} was not available after its transactional insert`);
+      }
+
+      if (isNewPayment && memo) {
+        // Link the on-chain leg to a registered SEP-24 / SEP-31 anchor transfer.
+        // Best-effort: anchor correlation must never block payment ingestion.
+        try {
+          await anchorLifecycleWatcher.correlatePayment({
+            txHash,
+            from: fromAddress,
+            to: isHorizonPayment(record) ? record.to : wallet.publicKey,
+            memo,
+            memoType: (record as { memo_type?: string }).memo_type,
+            userId: wallet.userId,
+          });
+        } catch (err: unknown) {
+          log.warn(`[WatcherWorker] Anchor correlation failed for ${txHash}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       if (isNewPayment && payment) {
@@ -1015,6 +1034,18 @@ export async function processSorobanContractsConcurrently(
   await Promise.all(workers);
 }
 
+/**
+ * Trustline / clawback sentinel pass. A failure here must never abort the
+ * payment poll, so errors are logged and swallowed.
+ */
+async function runTrustlineSentinel(publicKeys: string[]): Promise<void> {
+  try {
+    await runTrustlineSentinelPass(publicKeys);
+  } catch (err: unknown) {
+    log.warn(`[WatcherWorker] Trustline sentinel pass failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export async function pollOnce() {
   return tracer.startActiveSpan('watcher.pollOnce', async (pollSpan) => {
     try {
@@ -1032,6 +1063,7 @@ export async function pollOnce() {
           console.error(`[WatcherWorker] Error processing wallet ${wallet.publicKey}:`, errMsg);
         }
       }
+      await runTrustlineSentinel(wallets.map((wallet) => wallet.publicKey));
       const contractIds = getActiveContractIds();
       if (contractIds.length > 0) {
         await processSorobanContractsConcurrently(contractIds);
@@ -1152,6 +1184,8 @@ export async function runWatcher() {
               );
             }
           }
+
+          await runTrustlineSentinel(wallets.map((wallet) => wallet.publicKey));
 
           const contractIds = getActiveContractIds();
           if (contractIds.length > 0) {

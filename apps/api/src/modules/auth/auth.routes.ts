@@ -15,8 +15,17 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/auth/logout', { preHandler: [authenticateHook] }, authController.logout.bind(authController));
   
   // SEP-0010 Stellar Web Authentication endpoints
-  app.get('/auth/sep10/challenge', sep10Controller.getChallenge.bind(sep10Controller));
-  app.post('/auth/sep10/verify', sep10Controller.verify.bind(sep10Controller));
+  // Public and cryptographic, so both are rate limited per client.
+  app.get(
+    '/auth/sep10/challenge',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    sep10Controller.getChallenge.bind(sep10Controller),
+  );
+  app.post(
+    '/auth/sep10/verify',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    sep10Controller.verify.bind(sep10Controller),
+  );
 
   // MFA endpoints (require authentication)
   app.post('/auth/mfa/setup', { preHandler: [authenticateHook] }, authController.setupMFA.bind(authController));
