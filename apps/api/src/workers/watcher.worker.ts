@@ -29,6 +29,7 @@ import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { runTrustlineSentinelPass } from '../modules/stellar/trustline-sentinel.service';
 import { runManageDataSentinelPass } from '../modules/stellar/manage-data-sentinel';
+import { runAssetIssuerSentinelPass } from '../modules/stellar/asset-issuer-sentinel';
 import { sequencePreconditionWatcher } from '../modules/stellar/sequence-watcher.service';
 import { anchorLifecycleWatcher } from '../modules/stellar/anchor-watcher.service';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
