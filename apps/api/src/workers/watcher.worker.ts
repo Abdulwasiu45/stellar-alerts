@@ -37,6 +37,7 @@ import { flashLoanDetector } from '../modules/soroban/flash-loan-detector';
 import { contractGovernanceSentinel } from '../modules/soroban/governance-sentinel.service';
 import { mevArbitrageDetector, type LedgerSwap } from '../modules/soroban/mev-detector';
 import { feeBumpSentinel, type HorizonFeeBumpRecord } from '../modules/stellar/feebump-sentinel';
+import { classicAmmWatcher, type HorizonLiquidityPoolOperation } from '../modules/stellar/classic-amm.service';
 import { SignerWatcher, RedisSignerSnapshotStore } from '../modules/stellar/signer-watcher.service';
 import { MonitoredAddressRegistry } from '../lib/radix-index';
 import { scanLedgerOperations, operationMask } from '../lib/xdr-wasm';
@@ -1519,6 +1520,20 @@ export async function inspectLedgerForMev(swaps: readonly LedgerSwap[]) {
  */
 export function inspectFeeBumpTransaction(record: HorizonFeeBumpRecord, networkPassphrase: string) {
   return feeBumpSentinel.inspectHorizonTransaction(record, networkPassphrase);
+}
+
+/**
+ * Classic protocol-18 liquidity pool watcher: decodes deposit/withdraw operations,
+ * values LP shares, derives price bounds and slippage, and alerts subscribers
+ * watching the acting wallet or the pool ID (#982). Non-pool operations are ignored.
+ */
+export async function inspectClassicAmmOperations(ops: readonly HorizonLiquidityPoolOperation[]) {
+  try {
+    return await classicAmmWatcher.inspectOperations(ops);
+  } catch (err) {
+    log.warn({ err: err instanceof Error ? err.message : String(err) }, 'Classic AMM inspection failed');
+    return [];
+  }
 }
 
 /**
