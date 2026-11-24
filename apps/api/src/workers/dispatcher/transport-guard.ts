@@ -323,7 +323,7 @@ export function createGuardedTransport(options: TransportGuardOptions = {}): Gua
         }
 
         hops++;
-        let nextUrl: string;
+        let nextUrl: string | undefined;
         try {
           nextUrl = new URL(location, currentUrl).toString();
           assertHttpsOnly(nextUrl);
@@ -352,7 +352,7 @@ export function createGuardedTransport(options: TransportGuardOptions = {}): Gua
             currentUrl,
           );
         }
-        currentUrl = nextUrl;
+        currentUrl = nextUrl!;
         continue;
       }
 
