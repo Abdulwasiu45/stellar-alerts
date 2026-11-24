@@ -24,7 +24,19 @@ export async function authenticateHook(request: FastifyRequest, reply: FastifyRe
     throw new AuthenticationError('You must be logged in to perform this action.', 'AUTH_REQUIRED');
   }
 
-  const token = authHeader.split(' ')[1];
+  await authenticateToken(request, reply, authHeader.split(' ')[1]);
+}
+
+/**
+ * Same verification as the header hook, for transports that cannot set headers
+ * (browser EventSource). Used only by the SSE alert stream with a short-lived
+ * access token supplied as a query parameter.
+ */
+export async function authenticateToken(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  token: string,
+): Promise<void> {
   let decoded: UserPayload;
 
   try {

@@ -28,6 +28,7 @@ import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker
 import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { runTrustlineSentinelPass } from '../modules/stellar/trustline-sentinel.service';
+import { runAssetIssuerSentinelPass } from '../modules/stellar/asset-issuer-sentinel';
 import { anchorLifecycleWatcher } from '../modules/stellar/anchor-watcher.service';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
 import { deduplicationPipeline } from '../lib/deduplicator';
@@ -1046,6 +1047,18 @@ async function runTrustlineSentinel(publicKeys: string[]): Promise<void> {
   }
 }
 
+/**
+ * Asset issuer flag / home-domain / supply sentinel. Like the trustline pass,
+ * failures are logged and swallowed so the payment poll keeps running.
+ */
+async function runAssetIssuerSentinel(publicKeys: string[]): Promise<void> {
+  try {
+    await runAssetIssuerSentinelPass(publicKeys);
+  } catch (err: unknown) {
+    log.warn(`[WatcherWorker] Asset issuer sentinel pass failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export async function pollOnce() {
   return tracer.startActiveSpan('watcher.pollOnce', async (pollSpan) => {
     try {
@@ -1064,6 +1077,7 @@ export async function pollOnce() {
         }
       }
       await runTrustlineSentinel(wallets.map((wallet) => wallet.publicKey));
+      await runAssetIssuerSentinel(wallets.map((wallet) => wallet.publicKey));
       const contractIds = getActiveContractIds();
       if (contractIds.length > 0) {
         await processSorobanContractsConcurrently(contractIds);
@@ -1186,6 +1200,7 @@ export async function runWatcher() {
           }
 
           await runTrustlineSentinel(wallets.map((wallet) => wallet.publicKey));
+          await runAssetIssuerSentinel(wallets.map((wallet) => wallet.publicKey));
 
           const contractIds = getActiveContractIds();
           if (contractIds.length > 0) {
