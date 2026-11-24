@@ -2,7 +2,7 @@ import { isValidEd25519PublicKey } from '@stellar-alerts/shared';
 import { env } from '../config/env';
 import { prisma, connectWithRetry } from '../lib/prisma';
 import { stellar, decodeHorizonAsset, parseSacTransferEvent, formatTokenAmount } from '../lib/stellar';
-import { enqueuePaymentAlert } from '../lib/queue';
+import { enqueuePaymentAlert, startAlertSpillover } from '../lib/queue';
 import { publishPaymentEvent } from '../lib/realtime';
 import {
   getSorobanLatestLedger,
@@ -28,6 +28,8 @@ import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker
 import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { runTrustlineSentinelPass } from '../modules/stellar/trustline-sentinel.service';
+import { runManageDataSentinelPass } from '../modules/stellar/manage-data-sentinel';
+import { sequencePreconditionWatcher } from '../modules/stellar/sequence-watcher.service';
 import { anchorLifecycleWatcher } from '../modules/stellar/anchor-watcher.service';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
 import { deduplicationPipeline } from '../lib/deduplicator';
@@ -1044,6 +1046,16 @@ async function runTrustlineSentinel(publicKeys: string[]): Promise<void> {
   } catch (err: unknown) {
     log.warn(`[WatcherWorker] Trustline sentinel pass failed: ${err instanceof Error ? err.message : String(err)}`);
   }
+  try {
+    await runManageDataSentinelPass(publicKeys);
+  } catch (err: unknown) {
+    log.warn(`[WatcherWorker] Manage-data sentinel pass failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  try {
+    await sequencePreconditionWatcher.runPass(publicKeys);
+  } catch (err: unknown) {
+    log.warn(`[WatcherWorker] Sequence watcher pass failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function pollOnce() {
@@ -1113,6 +1125,12 @@ export async function runWatcher() {
   });
 
   await loadContractRegistry();
+
+  // Replays alert jobs journaled to disk before a restart. A journal problem
+  // must not stop ingestion, since enqueueing has its own fallback.
+  await startAlertSpillover().catch((err: unknown) => {
+    log.error(`[WatcherWorker] Could not open alert spillover journal: ${err instanceof Error ? err.message : String(err)}`);
+  });
 
   // Default alert channel; real delivery channels register themselves the same way.
   contractRouter.registerChannel('log', (alert) => {
