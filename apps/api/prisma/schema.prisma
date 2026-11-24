@@ -155,6 +155,39 @@ model PaymentArchive {
   @@index([archivedAt])
 }
 
+// One verified Parquet object in the cold-tier ledger archive. A row exists
+// only after the object was uploaded and its SHA-256 was verified in storage,
+// so it doubles as the audit trail for pruned hot-database rows.
+model ArchiveManifest {
+  id          String   @id @default(cuid())
+  dataset     String
+  year        Int
+  month       Int
+  objectKey   String   @unique
+  provider    String
+  location    String
+  sha256      String
+  sizeBytes   Int
+  rowCount    Int
+  minRecordAt DateTime
+  maxRecordAt DateTime
+  verifiedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([dataset, year, month])
+}
+
+// High-water mark of the cold-tier export for one source table
+// (scope = "<dataset>:<tier>"). Rows are immutable and the cursor runs on
+// (createdAt, id), so a row is exported exactly once even when it cannot be
+// pruned from the hot table afterwards.
+model ArchiveCursor {
+  scope         String   @id
+  lastCreatedAt DateTime
+  lastId        String
+  updatedAt     DateTime @updatedAt
+}
+
 model OutboxEvent {
   id          String    @id @default(cuid())
   eventType   String
@@ -603,12 +636,50 @@ model AnchorTransactionWatch {
   // "sep24" | "sep31"
   protocol          String
   lastKnownStatus   String?
+  // Protocol-independent lifecycle bucket derived from lastKnownStatus
+  // (AWAITING_USER, AWAITING_ANCHOR, ACTION_REQUIRED, COMPLETED, ...).
+  unifiedState      String?
+  statusChangedAt   DateTime?
+  // "deposit" | "withdrawal" | "payment" (SEP-31)
+  kind              String?
+  // The anchor's Stellar account for this transfer (SEP-24 withdraw account,
+  // SEP-31 receiving account). Together with `memo` it identifies the
+  // on-chain payment that belongs to this transfer.
+  anchorAccount     String?
+  memo              String?
+  // "text" | "id" | "hash"
+  memoType          String?
+  // Ledger transaction hash once the on-chain leg has been matched/reported.
+  stellarTxHash     String?
+  events            AnchorTransactionEvent[]
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   @@unique([anchorEndpoint, anchorTxId])
   @@index([userId])
   @@index([lastKnownStatus])
+  @@index([anchorAccount, memo])
+}
+
+// Append-only history of an anchor transfer: every status transition the
+// watcher observed plus the on-chain transaction it was matched to.
+model AnchorTransactionEvent {
+  id            String                 @id @default(cuid())
+  watchId       String
+  watch         AnchorTransactionWatch @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  // "STATUS_CHANGED" | "STELLAR_TX_MATCHED"
+  type          String
+  fromStatus    String?
+  toStatus      String?
+  unifiedState  String?
+  stellarTxHash String?
+  // True when the anchor reported a status that moves backwards on the
+  // happy path (e.g. completed -> pending_anchor).
+  anomaly       Boolean                @default(false)
+  detail        String?
+  createdAt     DateTime               @default(now())
+
+  @@index([watchId, createdAt])
 }
 
 // A user's alert threshold on a Soroban DEX (Phoenix / Soroswap style)
@@ -973,5 +1044,16 @@ model ContractWasmAudit {
   @@index([wasmHash])
   @@index([isVerified])
   @@index([lastCheckedAt])
+}
+
+model ContractAbiRegistry {
+  contractId  String   @id
+  wasmHash    String
+  abi         Json
+  extractedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([wasmHash])
+  @@index([extractedAt])
 }
 

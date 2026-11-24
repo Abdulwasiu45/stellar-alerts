@@ -593,6 +593,107 @@ export const stellar = {
       return [];
     }
   },
+  // Newest operation paging token for an account, used to baseline a cursor.
+  // `ok: false` means Horizon could not be reached; `token: null` means the
+  // account has no operations yet.
+  async getLatestOperationPagingToken(
+    publicKey: string,
+    options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<{ ok: boolean; token: string | null }> {
+    if (!publicKey || !StellarSdk.StrKey.isValidEd25519PublicKey(publicKey)) {
+      return { ok: false, token: null };
+    }
+    try {
+      const page = await withDeadline(
+        () => server.operations().forAccount(publicKey).order('desc').limit(1).call(),
+        options.timeoutMs ?? env.HORIZON_REQUEST_TIMEOUT_MS,
+        options.signal,
+        'Horizon',
+      );
+      return { ok: true, token: page.records[0]?.paging_token ?? null };
+    } catch (error: any) {
+      console.warn(`[Stellar] Error fetching latest operation for ${publicKey}:`, error?.message || error);
+      return { ok: false, token: null };
+    }
+  },
+
+  // All operation types (not just payments) recorded after a paging token,
+  // oldest first. Used by the trustline sentinel, which needs change_trust,
+  // clawback and set_trust_line_flags records.
+  async getAccountOperationsSince(
+    publicKey: string,
+    cursor: string,
+    limit: number = 100,
+    options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<{ ok: boolean; records: any[] }> {
+    if (!publicKey || !StellarSdk.StrKey.isValidEd25519PublicKey(publicKey)) {
+      return { ok: false, records: [] };
+    }
+    try {
+      const page = await withDeadline(
+        () => server.operations().forAccount(publicKey).cursor(cursor).order('asc').limit(limit).call(),
+        options.timeoutMs ?? env.HORIZON_REQUEST_TIMEOUT_MS,
+        options.signal,
+        'Horizon',
+      );
+      return { ok: true, records: page.records };
+    } catch (error: any) {
+      console.warn(`[Stellar] Error fetching operations for ${publicKey}:`, error?.message || error);
+      return { ok: false, records: [] };
+    }
+  },
+
+  // Claimable balances an account is a claimant of (asset, amount and claimant list).
+  async getClaimableBalancesForClaimant(
+    publicKey: string,
+    options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<Array<{ id: string; claimants: string[]; assetCode: string; assetIssuer?: string; amount?: string }>> {
+    if (!publicKey || !StellarSdk.StrKey.isValidEd25519PublicKey(publicKey)) {
+      return [];
+    }
+    try {
+      const page: any = await withDeadline(
+        () => (server.claimableBalances() as any).claimant(publicKey).limit(200).call(),
+        options.timeoutMs ?? env.HORIZON_REQUEST_TIMEOUT_MS,
+        options.signal,
+        'Horizon',
+      );
+      return (page.records as any[]).map((record) => {
+        const [code, issuer] = String(record.asset ?? '').split(':');
+        return {
+          id: record.id,
+          claimants: (record.claimants ?? []).map((claimant: any) => claimant.destination),
+          assetCode: issuer ? code : 'XLM',
+          assetIssuer: issuer || undefined,
+          amount: record.amount,
+        };
+      });
+    } catch (error: any) {
+      console.warn(`[Stellar] Error fetching claimable balances for ${publicKey}:`, error?.message || error);
+      return [];
+    }
+  },
+
+  // Operations that touched a claimable balance. Horizon still serves these
+  // after the balance is claimed or clawed back.
+  async getClaimableBalanceOperations(
+    balanceId: string,
+    options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<any[]> {
+    try {
+      const page: any = await withDeadline(
+        () => (server.operations() as any).forClaimableBalance(balanceId).order('desc').limit(20).call(),
+        options.timeoutMs ?? env.HORIZON_REQUEST_TIMEOUT_MS,
+        options.signal,
+        'Horizon',
+      );
+      return page.records;
+    } catch (error: any) {
+      console.warn(`[Stellar] Error fetching operations for claimable balance ${balanceId}:`, error?.message || error);
+      return [];
+    }
+  },
+
   // Helper to fetch recent payments for a given account
   async getRecentPayments(
     publicKey: string,

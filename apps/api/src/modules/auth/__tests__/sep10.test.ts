@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as StellarSdk from 'stellar-sdk';
-import { SEP10Service } from '../sep10.service';
+import { SEP10Service, Sep10Error, type ClientAccountSigners } from '../sep10.service';
 
 vi.mock('../../../config/env', () => ({
   env: {
@@ -25,18 +25,36 @@ vi.mock('../../../lib/prisma', () => ({
 describe('SEP-0010 Stellar Web Authentication API (#634)', () => {
   let sep10Service: SEP10Service;
   let serverKeypair: StellarSdk.Keypair;
+  // Unfunded account by default: only the master key can sign.
+  let loadClientSigners: ReturnType<typeof vi.fn<(publicKey: string) => Promise<ClientAccountSigners | null>>>;
+  let consumed: Set<string>;
   const homeDomain = 'stellar-alerts.org';
   const networkPassphrase = StellarSdk.Networks.TESTNET;
 
   beforeEach(() => {
     vi.clearAllMocks();
     serverKeypair = StellarSdk.Keypair.random();
-    sep10Service = new SEP10Service(
-      serverKeypair.secret(),
-      homeDomain,
-      networkPassphrase
-    );
+    consumed = new Set();
+    loadClientSigners = vi.fn().mockResolvedValue(null);
+    sep10Service = new SEP10Service(serverKeypair.secret(), homeDomain, networkPassphrase, {
+      replayGuard: {
+        consume: async (key) => {
+          if (consumed.has(key)) return false;
+          consumed.add(key);
+          return true;
+        },
+      },
+      loadClientSigners,
+      issueSession: async () => ({ accessToken: 'access-token', refreshToken: 'refresh-token' }),
+    });
   });
+
+  const signedChallenge = (client: StellarSdk.Keypair, extraSigners: StellarSdk.Keypair[] = [client]) => {
+    const challenge = sep10Service.generateChallenge(client.publicKey());
+    const tx = StellarSdk.TransactionBuilder.fromXDR(challenge.transaction, networkPassphrase) as StellarSdk.Transaction;
+    extraSigners.forEach((signer) => tx.sign(signer));
+    return tx.toEnvelope().toXDR('base64');
+  };
 
   describe('generateChallenge', () => {
     it('generates a valid SEP-0010 challenge transaction envelope signed by the server', () => {
@@ -57,13 +75,18 @@ describe('SEP-0010 Stellar Web Authentication API (#634)', () => {
       expect(Number(tx.timeBounds?.minTime)).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
       expect(Number(tx.timeBounds?.maxTime)).toBeGreaterThan(Math.floor(Date.now() / 1000));
 
-      // Operations: manageData with client public key as source
-      expect(tx.operations).toHaveLength(1);
+      // Operations: client auth manageData with a 64-byte nonce, then web_auth_domain from the server
+      expect(tx.operations).toHaveLength(2);
       const op = tx.operations[0] as StellarSdk.Operation.ManageData;
       expect(op.type).toBe('manageData');
       expect(op.source).toBe(clientKeypair.publicKey());
       expect(op.name).toBe(`${homeDomain} auth`);
-      expect(op.value).toBeDefined();
+      expect(op.value).toHaveLength(64);
+
+      const domainOp = tx.operations[1] as StellarSdk.Operation.ManageData;
+      expect(domainOp.source).toBe(serverKeypair.publicKey());
+      expect(domainOp.name).toBe('web_auth_domain');
+      expect(domainOp.value?.toString('utf-8')).toBe(homeDomain);
 
       // Signed by server key
       const txHash = tx.hash();
@@ -256,6 +279,233 @@ describe('SEP-0010 Stellar Web Authentication API (#634)', () => {
       expect(session.user.id).toBe('user-existing');
       expect(session.user.email).toBe('existing@stellar-alerts.org');
       expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('challenge structure', () => {
+    const build = (ops: StellarSdk.xdr.Operation[], client: StellarSdk.Keypair) => {
+      const tx = new StellarSdk.TransactionBuilder(new StellarSdk.Account(serverKeypair.publicKey(), '-1'), {
+        fee: '100',
+        networkPassphrase,
+        timebounds: { minTime: 0, maxTime: Math.floor(Date.now() / 1000) + 300 },
+      });
+      ops.forEach((op) => tx.addOperation(op));
+      const built = tx.build();
+      built.sign(serverKeypair);
+      built.sign(client);
+      return built.toEnvelope().toXDR('base64');
+    };
+    const authOp = (client: StellarSdk.Keypair, value: Buffer) =>
+      StellarSdk.Operation.manageData({ source: client.publicKey(), name: `${homeDomain} auth`, value });
+
+    it('rejects a nonce that is not 64 bytes', () => {
+      const client = StellarSdk.Keypair.random();
+      const xdr = build([authOp(client, Buffer.from('short'))], client);
+      expect(() => sep10Service.verifyChallenge(xdr)).toThrow(/nonce must be exactly 64 bytes/);
+    });
+
+    it('rejects extra operations that are not the server web_auth_domain', () => {
+      const client = StellarSdk.Keypair.random();
+      const xdr = build(
+        [
+          authOp(client, Buffer.alloc(64, 1)),
+          StellarSdk.Operation.payment({
+            source: serverKeypair.publicKey(),
+            destination: client.publicKey(),
+            asset: StellarSdk.Asset.native(),
+            amount: '1',
+          }),
+        ],
+        client,
+      );
+      expect(() => sep10Service.verifyChallenge(xdr)).toThrow(/unexpected operation/);
+    });
+
+    it('rejects a web_auth_domain for a different domain', () => {
+      const client = StellarSdk.Keypair.random();
+      const xdr = build(
+        [
+          authOp(client, Buffer.alloc(64, 1)),
+          StellarSdk.Operation.manageData({
+            source: serverKeypair.publicKey(),
+            name: 'web_auth_domain',
+            value: Buffer.from('evil.example.com'),
+          }),
+        ],
+        client,
+      );
+      expect(() => sep10Service.verifyChallenge(xdr)).toThrow(/Invalid web_auth_domain/);
+    });
+
+    it('rejects a challenge signed for a different network passphrase', () => {
+      const client = StellarSdk.Keypair.random();
+      const publicService = new SEP10Service(serverKeypair.secret(), homeDomain, StellarSdk.Networks.PUBLIC);
+      const challenge = publicService.generateChallenge(client.publicKey());
+      const tx = StellarSdk.TransactionBuilder.fromXDR(challenge.transaction, StellarSdk.Networks.PUBLIC) as StellarSdk.Transaction;
+      tx.sign(client);
+
+      // Hash (and so every signature) differs per network, so the testnet service cannot validate it.
+      expect(() => sep10Service.verifyChallenge(tx.toEnvelope().toXDR('base64'))).toThrow(/not signed by the server key/);
+    });
+
+    it('supports a MEMO_ID and reports it', () => {
+      const client = StellarSdk.Keypair.random();
+      const challenge = sep10Service.generateChallenge(client.publicKey(), { memo: '12345' });
+      const tx = StellarSdk.TransactionBuilder.fromXDR(challenge.transaction, networkPassphrase) as StellarSdk.Transaction;
+      tx.sign(client);
+
+      expect(sep10Service.verifyChallenge(tx.toEnvelope().toXDR('base64')).memo).toBe('12345');
+    });
+  });
+
+  describe('verifyChallengeSigners', () => {
+    it('accepts the master key of an unfunded account', async () => {
+      const client = StellarSdk.Keypair.random();
+      const result = await sep10Service.verifyChallengeSigners(signedChallenge(client));
+
+      expect(result).toMatchObject({ accountExists: false, signersUsed: [client.publicKey()], signedWeight: 1 });
+    });
+
+    it('accepts a delegated signer whose weight meets the medium threshold', async () => {
+      const client = StellarSdk.Keypair.random();
+      const delegate = StellarSdk.Keypair.random();
+      loadClientSigners.mockResolvedValue({
+        mediumThreshold: 2,
+        signers: [
+          { key: client.publicKey(), weight: 0 },
+          { key: delegate.publicKey(), weight: 2 },
+        ],
+      });
+
+      const result = await sep10Service.verifyChallengeSigners(signedChallenge(client, [delegate]));
+
+      expect(result).toMatchObject({ accountExists: true, signedWeight: 2, threshold: 2, signersUsed: [delegate.publicKey()] });
+    });
+
+    it('rejects a master key whose weight was set to zero', async () => {
+      const client = StellarSdk.Keypair.random();
+      const delegate = StellarSdk.Keypair.random();
+      loadClientSigners.mockResolvedValue({
+        mediumThreshold: 1,
+        signers: [
+          { key: client.publicKey(), weight: 0 },
+          { key: delegate.publicKey(), weight: 1 },
+        ],
+      });
+
+      await expect(sep10Service.verifyChallengeSigners(signedChallenge(client))).rejects.toThrow(/signature/);
+    });
+
+    it('rejects signatures whose combined weight is below the threshold', async () => {
+      const client = StellarSdk.Keypair.random();
+      const second = StellarSdk.Keypair.random();
+      loadClientSigners.mockResolvedValue({
+        mediumThreshold: 3,
+        signers: [
+          { key: client.publicKey(), weight: 1 },
+          { key: second.publicKey(), weight: 1 },
+        ],
+      });
+
+      await expect(sep10Service.verifyChallengeSigners(signedChallenge(client, [client, second]))).rejects.toMatchObject({
+        code: 'INSUFFICIENT_SIGNER_WEIGHT',
+      });
+    });
+
+    it('sums the weight of several signers', async () => {
+      const client = StellarSdk.Keypair.random();
+      const second = StellarSdk.Keypair.random();
+      loadClientSigners.mockResolvedValue({
+        mediumThreshold: 2,
+        signers: [
+          { key: client.publicKey(), weight: 1 },
+          { key: second.publicKey(), weight: 1 },
+        ],
+      });
+
+      const result = await sep10Service.verifyChallengeSigners(signedChallenge(client, [client, second]));
+      expect(result.signedWeight).toBe(2);
+    });
+
+    it('rejects signatures from keys that are not signers of the account', async () => {
+      const client = StellarSdk.Keypair.random();
+      const stranger = StellarSdk.Keypair.random();
+
+      await expect(sep10Service.verifyChallengeSigners(signedChallenge(client, [client, stranger]))).rejects.toThrow(
+        /do not belong to the client account/,
+      );
+    });
+
+    it('fails closed when the signers cannot be loaded', async () => {
+      const client = StellarSdk.Keypair.random();
+      loadClientSigners.mockRejectedValue(new Sep10Error('Horizon down', 'SIGNER_LOOKUP_FAILED'));
+
+      await expect(sep10Service.verifyChallengeSigners(signedChallenge(client))).rejects.toMatchObject({
+        code: 'SIGNER_LOOKUP_FAILED',
+      });
+    });
+  });
+
+  describe('wallet ownership', () => {
+    it('does not log into a real user account that merely tracks the wallet', async () => {
+      const client = StellarSdk.Keypair.random();
+      mockPrisma.wallet.findUnique.mockResolvedValue({
+        id: 'watch-only',
+        publicKey: client.publicKey(),
+        deletedAt: null,
+        user: { id: 'victim', email: 'victim@example.com' },
+      });
+      mockPrisma.user.create.mockResolvedValue({
+        id: 'sep10-user',
+        email: `${client.publicKey().substring(0, 12).toLowerCase()}@stellar-alerts.org`,
+      });
+
+      const session = await sep10Service.verifyAndIssueSession(signedChallenge(client));
+
+      expect(session.user.id).toBe('sep10-user');
+      expect(session.user.id).not.toBe('victim');
+      // The key already belongs to another user's wallet row, so none is linked to the new user.
+      expect(mockPrisma.user.create.mock.calls[0][0].data).not.toHaveProperty('wallets');
+    });
+
+    it('does not reuse a soft-deleted wallet', async () => {
+      const client = StellarSdk.Keypair.random();
+      mockPrisma.wallet.findUnique.mockResolvedValue({
+        id: 'deleted',
+        publicKey: client.publicKey(),
+        deletedAt: new Date(),
+        user: { id: 'old-user', email: 'old@stellar-alerts.org' },
+      });
+      mockPrisma.user.create.mockResolvedValue({ id: 'fresh', email: 'fresh@stellar-alerts.org' });
+
+      const session = await sep10Service.verifyAndIssueSession(signedChallenge(client));
+
+      expect(session.user.id).toBe('fresh');
+    });
+  });
+
+  describe('replay protection', () => {
+    it('lets a signed challenge be redeemed only once', async () => {
+      const client = StellarSdk.Keypair.random();
+      const xdr = signedChallenge(client);
+      mockPrisma.wallet.findUnique.mockResolvedValue({
+        id: 'w',
+        publicKey: client.publicKey(),
+        user: { id: 'user-1', email: 'u@stellar-alerts.org' },
+      });
+
+      const first = await sep10Service.verifyAndIssueSession(xdr);
+      expect(first.refreshToken).toBe('refresh-token');
+
+      await expect(sep10Service.verifyAndIssueSession(xdr)).rejects.toMatchObject({ code: 'CHALLENGE_REPLAYED' });
+    });
+
+    it('does not burn the challenge when verification fails', async () => {
+      const client = StellarSdk.Keypair.random();
+      const challenge = sep10Service.generateChallenge(client.publicKey());
+
+      await expect(sep10Service.verifyAndIssueSession(challenge.transaction)).rejects.toThrow(/missing a valid signature/);
+      expect(consumed.size).toBe(0);
     });
   });
 });

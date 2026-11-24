@@ -27,11 +27,27 @@ import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
 import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
+import { runTrustlineSentinelPass } from '../modules/stellar/trustline-sentinel.service';
+import { runAssetIssuerSentinelPass } from '../modules/stellar/asset-issuer-sentinel';
+import { anchorLifecycleWatcher } from '../modules/stellar/anchor-watcher.service';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
 import { deduplicationPipeline } from '../lib/deduplicator';
 import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
 import { flashLoanDetector } from '../modules/soroban/flash-loan-detector';
 import { contractGovernanceSentinel } from '../modules/soroban/governance-sentinel.service';
+import { mevArbitrageDetector, type LedgerSwap } from '../modules/soroban/mev-detector';
+import { feeBumpSentinel, type HorizonFeeBumpRecord } from '../modules/stellar/feebump-sentinel';
+import { resourceSaturationProfiler, type ProfileInput } from '../modules/soroban/resource-profiler';
+import { classicAmmWatcher, type HorizonLiquidityPoolOperation } from '../modules/stellar/classic-amm.service';
+import { SignerWatcher, RedisSignerSnapshotStore } from '../modules/stellar/signer-watcher.service';
+import { MonitoredAddressRegistry } from '../lib/radix-index';
+import { scanLedgerOperations, operationMask } from '../lib/xdr-wasm';
+import { getRedisClient } from '../lib/redis';
+import {
+  CursorHandoverCoordinator,
+  CursorRollbackError,
+  FencingError,
+} from '../modules/watcher/cursor-coordinator';
 
 export const watcherLifecycle = new WorkerLifecycleManager({
   workerName: 'WatcherWorker',
@@ -45,6 +61,7 @@ import {
   buildCursorGapUpdate,
   buildCursorOutageUpdate,
   buildCursorSuccessUpdate,
+  ledgerSeqFromPagingToken,
   detectLedgerGap,
 } from '../lib/cursor-recovery';
 import {
@@ -59,6 +76,51 @@ import { isPingMessage } from '../types/ipc';
 import { extractFilterRules } from '../types/notification-preference';
 
 const tracer = trace.getTracer('watcher-worker');
+
+/**
+ * Compact in-memory index of every monitored wallet address (#radix-index).
+ * Refreshed from the DB each poll; `has()` is allocation-free so it is safe on
+ * the per-operation hot path.
+ */
+export const monitoredAddresses = new MonitoredAddressRegistry();
+
+/** Baselines live in Redis so a restart/rollout doesn't blind the watcher to changes made while it was down. */
+const signerWatcher = new SignerWatcher({ store: new RedisSignerSnapshotStore(getRedisClient()) });
+
+/**
+ * Highest ledger durably persisted by this node. Fed to the handover
+ * coordinator as the cursor it commits after each fully successful pass.
+ */
+let ledgerWatermark = 0;
+
+/** Set when WATCHER_HANDOVER_ENABLED=true; null means single-node mode (always ingesting). */
+export let cursorCoordinator: CursorHandoverCoordinator | null = null;
+
+export function noteProcessedLedger(pagingToken: string | null | undefined): void {
+  const ledger = ledgerSeqFromPagingToken(pagingToken);
+  if (ledger !== null && ledger > ledgerWatermark) ledgerWatermark = ledger;
+}
+
+/** Latest closed ledger on the network, or null if Horizon can't be reached. */
+async function getHeadLedger(): Promise<number | null> {
+  try {
+    const page = await stellar.server.ledgers().order('desc').limit(1).call();
+    const sequence = Number((page.records[0] as { sequence?: number | string } | undefined)?.sequence);
+    return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Rebuilds the monitored-address index from the wallets loaded by a poll. */
+export function syncMonitoredAddresses(wallets: ReadonlyArray<{ publicKey: string }>) {
+  return monitoredAddresses.replaceAll(
+    (function* () {
+      for (const wallet of wallets) yield wallet.publicKey;
+    })(),
+    wallets.length,
+  );
+}
 
 
 let memoryMonitor: MemoryMonitor | null = null;
@@ -160,9 +222,11 @@ export async function processPaymentRecord(
       span.setAttribute('payment.txHash', txHash);
       span.setAttribute('payment.walletId', wallet.id);
       span.setAttribute('payment.asset', asset);
+      // Sub-microsecond radix lookup: is the counterparty also one of our monitored wallets?
+      span.setAttribute('payment.fromMonitored', monitoredAddresses.has(fromAddress));
 
       const pagingToken = getHorizonPagingToken(record);
-      const existing = await prisma.payment.findUnique({ where: { txHash } });
+      const existing = await prisma.payment.findFirst({ where: { txHash, walletId: wallet.id } });
       let payment: { id: string } | null = existing;
       let isNewPayment = false;
       let shouldSendAlert = true;
@@ -231,7 +295,7 @@ export async function processPaymentRecord(
             }],
             skipDuplicates: true,
           });
-          const persistedPayment = await tx.payment.findUnique({ where: { txHash } });
+          const persistedPayment = await tx.payment.findFirst({ where: { txHash, walletId: wallet.id } });
 
           if (!persistedPayment) {
             throw new Error(`Payment ${txHash} was not available after its transactional insert`);
@@ -304,9 +368,27 @@ export async function processPaymentRecord(
       payment = transactionResult.payment;
       isNewPayment = transactionResult.isNewPayment;
       const { gap } = transactionResult;
+      noteProcessedLedger(pagingToken);
 
       if (!payment) {
         throw new Error(`Payment ${txHash} was not available after its transactional insert`);
+      }
+
+      if (isNewPayment && memo) {
+        // Link the on-chain leg to a registered SEP-24 / SEP-31 anchor transfer.
+        // Best-effort: anchor correlation must never block payment ingestion.
+        try {
+          await anchorLifecycleWatcher.correlatePayment({
+            txHash,
+            from: fromAddress,
+            to: isHorizonPayment(record) ? record.to : wallet.publicKey,
+            memo,
+            memoType: (record as { memo_type?: string }).memo_type,
+            userId: wallet.userId,
+          });
+        } catch (err: unknown) {
+          log.warn(`[WatcherWorker] Anchor correlation failed for ${txHash}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       if (isNewPayment && payment) {
@@ -957,6 +1039,30 @@ export async function processSorobanContractsConcurrently(
   await Promise.all(workers);
 }
 
+/**
+ * Trustline / clawback sentinel pass. A failure here must never abort the
+ * payment poll, so errors are logged and swallowed.
+ */
+async function runTrustlineSentinel(publicKeys: string[]): Promise<void> {
+  try {
+    await runTrustlineSentinelPass(publicKeys);
+  } catch (err: unknown) {
+    log.warn(`[WatcherWorker] Trustline sentinel pass failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Asset issuer flag / home-domain / supply sentinel. Like the trustline pass,
+ * failures are logged and swallowed so the payment poll keeps running.
+ */
+async function runAssetIssuerSentinel(publicKeys: string[]): Promise<void> {
+  try {
+    await runAssetIssuerSentinelPass(publicKeys);
+  } catch (err: unknown) {
+    log.warn(`[WatcherWorker] Asset issuer sentinel pass failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export async function pollOnce() {
   return tracer.startActiveSpan('watcher.pollOnce', async (pollSpan) => {
     try {
@@ -974,6 +1080,8 @@ export async function pollOnce() {
           console.error(`[WatcherWorker] Error processing wallet ${wallet.publicKey}:`, errMsg);
         }
       }
+      await runTrustlineSentinel(wallets.map((wallet) => wallet.publicKey));
+      await runAssetIssuerSentinel(wallets.map((wallet) => wallet.publicKey));
       const contractIds = getActiveContractIds();
       if (contractIds.length > 0) {
         await processSorobanContractsConcurrently(contractIds);
@@ -1054,7 +1162,7 @@ export async function runWatcher() {
     log.warn({ error: err }, 'Snapshot recovery failed, proceeding with fresh state');
   }
 
-  const poll = async () => {
+  const runPoll = async () => {
     return watcherLifecycle.runTask(async () => {
       return tracer.startActiveSpan('watcher.poll', async (pollSpan) => {
         try {
@@ -1066,6 +1174,7 @@ export async function runWatcher() {
               walletStreams.delete(walletId);
             }
           }
+          syncMonitoredAddresses(wallets);
           if (wallets.length === 0) {
             log.info(
               "[WatcherWorker] No wallets registered in DB to watch. Waiting for next poll...",
@@ -1080,6 +1189,8 @@ export async function runWatcher() {
           );
           for (const wallet of wallets) {
             await processWalletPayments({ id: wallet.id, publicKey: wallet.publicKey, userId: wallet.userId });
+            // set_options never appears in the payments stream, so compare signer/threshold state per poll.
+            await inspectSignerChanges(wallet.publicKey);
             if (!walletStreams.has(wallet.id)) {
               walletStreams.set(
                 wallet.id,
@@ -1091,6 +1202,9 @@ export async function runWatcher() {
               );
             }
           }
+
+          await runTrustlineSentinel(wallets.map((wallet) => wallet.publicKey));
+          await runAssetIssuerSentinel(wallets.map((wallet) => wallet.publicKey));
 
           const contractIds = getActiveContractIds();
           if (contractIds.length > 0) {
@@ -1109,6 +1223,88 @@ export async function runWatcher() {
       });
     });
   };
+
+  const closeAllStreams = () => {
+    for (const close of walletStreams.values()) close();
+    walletStreams.clear();
+  };
+
+  let pollInFlight = false;
+  /**
+   * One ingestion pass, gated by the handover coordinator when enabled: only the
+   * primary ingests. Each pass stages the network head before work and commits the
+   * persisted watermark only if the whole pass succeeded, so the shared cursor
+   * never gets ahead of processed ledgers.
+   */
+  const poll = async () => {
+    const coordinator = cursorCoordinator;
+    if (coordinator && !coordinator.isPrimary) {
+      log.debug({ role: coordinator.role }, '[WatcherWorker] Shadow node, skipping ingestion pass');
+      return null;
+    }
+    if (pollInFlight) return null;
+    pollInFlight = true;
+    try {
+      let head: number | null = null;
+      if (coordinator) {
+        head = await getHeadLedger();
+        if (head !== null) {
+          try {
+            await coordinator.stage(head);
+          } catch (err) {
+            if (err instanceof FencingError) throw err;
+            if (!(err instanceof CursorRollbackError)) throw err;
+            head = null; // Horizon node is behind the committed cursor; run the pass but don't move the cursor
+          }
+        }
+      }
+
+      const result = await runPoll();
+
+      if (coordinator && head !== null && result !== null) {
+        const target = Math.min(ledgerWatermark, head);
+        if (target > 0 && target >= coordinator.committedCursor) await coordinator.commit(target);
+      }
+      return result;
+    } catch (err) {
+      if (err instanceof FencingError) {
+        log.warn('[WatcherWorker] Lost primary lease mid-pass; closing streams and returning to shadow');
+        closeAllStreams();
+        return null;
+      }
+      throw err;
+    } finally {
+      pollInFlight = false;
+    }
+  };
+
+  if (env.WATCHER_HANDOVER_ENABLED === 'true') {
+    cursorCoordinator = new CursorHandoverCoordinator({
+      redis: getRedisClient(),
+      leaseTtlMs: env.WATCHER_HANDOVER_LEASE_TTL_MS,
+      // Shadow only contends once its dependencies are actually usable.
+      warmup: async () => {
+        await prisma.$queryRaw`SELECT 1`;
+        return true;
+      },
+      onPromoted: (info) => {
+        ledgerWatermark = Math.max(ledgerWatermark, info.resumeFrom);
+        if (info.replayWindow) {
+          log.warn(
+            { ...info.replayWindow },
+            '⚠️ Previous primary died mid-batch; replaying window under deduplication',
+          );
+        }
+        void poll();
+      },
+      onDemoted: () => closeAllStreams(),
+    });
+    await cursorCoordinator.start();
+    // Registered after 'horizonStreams' (see above) so streams close before the lease is released.
+    watcherLifecycle.registerCleanup('cursorHandover', async () => {
+      await cursorCoordinator?.handOver();
+    });
+  }
 
   // Start initial poll, which opens SSE streams for active wallets and performs catch-up safety.
   await poll();
@@ -1309,6 +1505,89 @@ export async function inspectTransactionForFlashLoans(input: {
  */
 export async function inspectContractGovernance(event: any) {
   return contractGovernanceSentinel.parseGovernanceEvent(event);
+}
+
+/**
+ * Intra-ledger MEV detector: scans every swap of one closed ledger for cyclic
+ * arbitrage and sandwich extraction and alerts affected pool subscribers (#970).
+ */
+export async function inspectLedgerForMev(swaps: readonly LedgerSwap[]) {
+  return mevArbitrageDetector.analyzeAndNotify(swaps);
+}
+
+/**
+ * Fee-bump sponsor sentinel: unwraps CAP-0015 envelopes, tracks rolling hourly
+ * fee burn per sponsor and alerts on fee surges or failed inner transactions (#978).
+ */
+export function inspectFeeBumpTransaction(record: HorizonFeeBumpRecord, networkPassphrase: string) {
+  return feeBumpSentinel.inspectHorizonTransaction(record, networkPassphrase);
+}
+
+/**
+ * Classic protocol-18 liquidity pool watcher: decodes deposit/withdraw operations,
+ * values LP shares, derives price bounds and slippage, and alerts subscribers
+ * watching the acting wallet or the pool ID (#982). Non-pool operations are ignored.
+ */
+export async function inspectClassicAmmOperations(ops: readonly HorizonLiquidityPoolOperation[]) {
+  try {
+    return await classicAmmWatcher.inspectOperations(ops);
+  } catch (err) {
+    log.warn({ err: err instanceof Error ? err.message : String(err) }, 'Classic AMM inspection failed');
+    return [];
+  }
+}
+
+/**
+ * Soroban resource saturation profiler: decodes a transaction's TransactionMetaV3
+ * and warns the contract owner when CPU, memory or ledger read/write usage crosses
+ * 80% of the network maximum, before invocations start hitting ResourceLimitExceeded (#972).
+ */
+export async function inspectSorobanResourceUsage(input: ProfileInput) {
+  try {
+    return await resourceSaturationProfiler.profile(input);
+  } catch (err) {
+    log.warn({ txHash: input.txHash, err: err instanceof Error ? err.message : String(err) }, 'Resource profiling failed');
+    return null;
+  }
+}
+
+/**
+ * Signer / threshold mutation sentinel: diffs the account's current signer set
+ * and thresholds against the last stored baseline and alerts on additions,
+ * removals, weight changes, threshold edits and master-key zeroing.
+ * Failures are isolated so a bad account never stalls payment ingestion.
+ */
+export async function inspectSignerChanges(accountId: string) {
+  try {
+    return await signerWatcher.checkAccount(accountId);
+  } catch (err) {
+    log.warn({ accountId, err: err instanceof Error ? err.message : String(err) }, 'Signer inspection failed');
+    return null;
+  }
+}
+
+/**
+ * Ledger-level entry point: scans raw `LedgerCloseMeta` XDR (bytes or base64) with the
+ * WASM reader, keeps only `set_options` operations, and for each one whose source account
+ * is a monitored address (radix lookup) runs the signer/threshold sentinel immediately
+ * instead of waiting for the next poll.
+ */
+export async function processLedgerCloseMeta(
+  meta: Uint8Array | string,
+  inspect: (accountId: string) => Promise<unknown> = inspectSignerChanges,
+) {
+  const scan = scanLedgerOperations(meta, operationMask('setOptions'));
+  const accounts = new Set<string>();
+  for (const op of scan.operations) {
+    if (monitoredAddresses.has(op.sourceAccount)) accounts.add(op.sourceAccount);
+  }
+  await Promise.all([...accounts].map((accountId) => inspect(accountId)));
+  return {
+    ledgerSeq: scan.header.ledgerSeq,
+    engine: scan.engine,
+    setOptionsOperations: scan.operations.length,
+    inspectedAccounts: [...accounts],
+  };
 }
 
 export interface WatcherShutdownResources {

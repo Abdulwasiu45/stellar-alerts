@@ -22,6 +22,7 @@ import { sorobanStateRoutes } from "./modules/soroban-state/soroban-state.routes
 import { wasmAnalyzerRoutes } from "./modules/wasm-analyzer/wasm-analyzer.routes";
 import { notificationsRoutes } from "./modules/notifications/notifications.routes";
 import { alertRulesRoutes } from "./modules/alert-rules/alert-rules.routes";
+import { alertsRoutes } from "./modules/alerts/alerts.routes";
 import { deadLettersRoutes } from "./modules/dead-letters/dead-letters.routes";
 import { discordInteractionsRoutes } from "./modules/discord-interactions";
 import { slackRoutes } from "./modules/slack/slack.routes";
@@ -31,6 +32,7 @@ import { exportsRoutes } from "./modules/exports/exports.routes";
 import { simulationRoutes } from "./modules/simulation/simulation.routes";
 import { adminRoutes } from "./modules/admin/admin.routes";
 import { auditRoutes } from "./modules/audit/audit.routes";
+import { anchorRoutes } from "./modules/stellar/anchor.routes";
 import { openApiOptions } from "./openapi.config";
 import { loggerOptions } from "./lib/logger";
 import { env } from "./config/env";
@@ -38,6 +40,8 @@ import metricsPlugin from "./plugins/metrics";
 
 import degradedModePlugin from "./plugins/degraded-mode";
 import { AppError } from "./lib/errors";
+import { abiRegistryRoutes } from "./modules/soroban/abi-registry.routes";
+import { AdaptiveLoadShedder, loadShedderMiddleware } from "./middleware/load-shedder.middleware";
 
 export { openApiComponentSchemas, openApiOptions } from "./openapi.config";
 
@@ -159,6 +163,7 @@ export const buildApp = async () => {
   // than scoped to a plugin encapsulation boundary.
   await registerCorrelation(app);
   await registerSecurityHeaders(app);
+  app.addHook('onRequest', loadShedderMiddleware(new AdaptiveLoadShedder()));
 
   await app.register(rateLimit, {
     global: true,
@@ -238,6 +243,7 @@ export const buildApp = async () => {
   app.register(accountRoutes);
   app.register(notificationsRoutes);
   app.register(alertRulesRoutes);
+  await app.register(alertsRoutes, { prefix: "/api/v1" });
   app.register(deadLettersRoutes);
   app.register(slackRoutes);
   app.register(slackInteractionsRoutes);
@@ -249,6 +255,8 @@ export const buildApp = async () => {
   app.register(wasmAnalyzerRoutes);
   app.register(adminRoutes);
   app.register(auditRoutes);
+  app.register(anchorRoutes);
+  app.register(abiRegistryRoutes);
 
   return app;
 };

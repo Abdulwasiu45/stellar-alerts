@@ -10,7 +10,7 @@ import { webhooksService } from '../modules/webhooks/webhooks.service';
 import { dispatchWhatsAppAlert, WhatsAppInvalidNumberError } from '../utils/whatsapp';
 import { prisma } from './prisma';
 import { createLogger } from './logger';
-import { publishDeliveryEvent } from './realtime';
+import { publishAlertEvent, publishDeliveryEvent } from './realtime';
 import { deliverWithIdempotency } from './delivery';
 import { instrumentedWebhookFetch } from './webhook-telemetry';
 import { persistDeadLetter } from './dead-letter';
@@ -955,6 +955,16 @@ export async function processAlertDispatch(data: AlertJobData) {
     };
 
     const userId = wallet?.user?.id ?? null;
+
+    if (userId) {
+      void publishAlertEvent({
+        userId,
+        event: 'alert',
+        severity: String(data.severity ?? 'MEDIUM').toUpperCase(),
+        walletId: data.walletId,
+        payload: webhookPayload,
+      });
+    }
 
     const recordDeadLetter = (channel: string, destination: string | null, err: any) =>
       persistDeadLetter({
