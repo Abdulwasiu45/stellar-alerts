@@ -37,6 +37,7 @@ import { flashLoanDetector } from '../modules/soroban/flash-loan-detector';
 import { contractGovernanceSentinel } from '../modules/soroban/governance-sentinel.service';
 import { mevArbitrageDetector, type LedgerSwap } from '../modules/soroban/mev-detector';
 import { feeBumpSentinel, type HorizonFeeBumpRecord } from '../modules/stellar/feebump-sentinel';
+import { resourceSaturationProfiler, type ProfileInput } from '../modules/soroban/resource-profiler';
 import { classicAmmWatcher, type HorizonLiquidityPoolOperation } from '../modules/stellar/classic-amm.service';
 import { SignerWatcher, RedisSignerSnapshotStore } from '../modules/stellar/signer-watcher.service';
 import { MonitoredAddressRegistry } from '../lib/radix-index';
@@ -1533,6 +1534,20 @@ export async function inspectClassicAmmOperations(ops: readonly HorizonLiquidity
   } catch (err) {
     log.warn({ err: err instanceof Error ? err.message : String(err) }, 'Classic AMM inspection failed');
     return [];
+  }
+}
+
+/**
+ * Soroban resource saturation profiler: decodes a transaction's TransactionMetaV3
+ * and warns the contract owner when CPU, memory or ledger read/write usage crosses
+ * 80% of the network maximum, before invocations start hitting ResourceLimitExceeded (#972).
+ */
+export async function inspectSorobanResourceUsage(input: ProfileInput) {
+  try {
+    return await resourceSaturationProfiler.profile(input);
+  } catch (err) {
+    log.warn({ txHash: input.txHash, err: err instanceof Error ? err.message : String(err) }, 'Resource profiling failed');
+    return null;
   }
 }
 
