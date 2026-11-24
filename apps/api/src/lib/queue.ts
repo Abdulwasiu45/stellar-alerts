@@ -25,6 +25,7 @@ import { dispatchPushNotification, PushNotificationData } from '../utils/push-pr
 import { classifyWorkerError, getWorkerMaxAttempts, PermanentWorkerError } from './worker-retry-policy';
 import { QueueLaneManager, QueueLane, resolveLaneForAlert } from './queue-lanes';
 import type { FilterRuleGroup } from './rules-engine';
+import { DiskSpilloverQueue, type SpilloverJob } from './queue/disk-spillover';
 
 const queueLog = createLogger({ module: 'Queue' });
 
@@ -630,6 +631,9 @@ try {
   );
 
   registerRedisCleanupTask(async () => {
+    // Closed first so its final flush happens while the queues still exist.
+    if (alertSpillover) await alertSpillover.close().catch(() => {});
+    alertSpillover = null;
     if (alertWorker) await alertWorker.close().catch(() => {});
     if (alertQueueEvents) await alertQueueEvents.close().catch(() => {});
     if (alertQueue) await alertQueue.close().catch(() => {});
@@ -1179,47 +1183,93 @@ export async function processAlertDispatch(data: AlertJobData) {
   }
 }
 
-export async function enqueuePaymentAlert(data: AlertJobData) {
-  if (queueLaneManager) {
-    try {
-      const lane = resolveLaneForAlert(data);
-      const job = await queueLaneManager.enqueue(lane, "dispatch-alert", data, {
-        jobId: `payment-${data.txHash}`,
-      });
-      queueLog.info(
-        { jobId: job.id, txHash: data.txHash, lane, requestId: data.requestId },
-        '📨 Enqueued payment alert job into priority lane',
-      );
-      return job;
-    } catch (err: any) {
-      queueLog.warn(
-        { txHash: data.txHash, err: err.message },
-        'Failed to enqueue alert into priority lane. Falling back to direct dispatch...',
-      );
-      return processAlertDispatch(data);
-    }
+/** Sends a live or replayed alert job to BullMQ under its original job ID. */
+async function addAlertJobToRedis(job: SpilloverJob<AlertJobData>) {
+  if (job.lane && queueLaneManager) {
+    return queueLaneManager.enqueue(job.lane as QueueLane, job.name, job.data, { jobId: job.jobId });
   }
+  if (!alertQueue) throw new Error('Alert queue is not initialized');
+  return alertQueue.add(job.name as never, job.data as never, {
+    jobId: job.jobId,
+    attempts: 5,
+    backoff: {
+      type: "exponential",
+      delay: 2000,
+    },
+  });
+}
 
-  if (!alertQueue) {
+async function isAlertRedisAvailable(): Promise<boolean> {
+  if (!alertQueue) return false;
+  const queue = alertQueue;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      (async () => {
+        const client = (await queue.client) as unknown as { status: string; ping(): Promise<string> };
+        // Checked first: a ping on a down connection would sit in the offline queue.
+        return client.status === 'ready' && (await client.ping()) === 'PONG';
+      })(),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), env.ALERT_SPILLOVER_ENQUEUE_TIMEOUT_MS);
+        timer.unref();
+      }),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+let alertSpillover: DiskSpilloverQueue<AlertJobData, Awaited<ReturnType<typeof addAlertJobToRedis>>> | null = null;
+
+function getAlertSpillover() {
+  alertSpillover ??= new DiskSpilloverQueue({
+    directory: env.ALERT_SPILLOVER_DIR,
+    enqueueTimeoutMs: env.ALERT_SPILLOVER_ENQUEUE_TIMEOUT_MS,
+    sink: addAlertJobToRedis,
+    isAvailable: isAlertRedisAvailable,
+    onError: (message, err) => {
+      queueLog.error({ err: err instanceof Error ? err.message : String(err) }, message);
+    },
+  });
+  return alertSpillover;
+}
+
+/**
+ * Recovers jobs journaled before a restart. Without this they would only be
+ * picked up the next time an enqueue happened to fail.
+ */
+export async function startAlertSpillover(): Promise<void> {
+  if (!queueLaneManager && !alertQueue) return;
+  await getAlertSpillover().open();
+}
+
+export async function enqueuePaymentAlert(data: AlertJobData) {
+  if (!queueLaneManager && !alertQueue) {
     queueLog.info({ txHash: data.txHash }, 'Queue not connected for payment. Dispatching alert directly in-process...');
     return processAlertDispatch(data);
   }
 
+  const jobId = `payment-${data.txHash}`;
+  const lane = queueLaneManager ? resolveLaneForAlert(data) : undefined;
+
   try {
-    const job = await alertQueue.add("dispatch-alert", data, {
-      jobId: `payment-${data.txHash}`,
-      attempts: 5,
-      backoff: {
-        type: "exponential",
-        delay: 2000,
-      },
-    });
-    queueLog.info({ jobId: job.id, txHash: data.txHash, requestId: data.requestId }, '📨 Enqueued payment alert job');
-    return job;
+    const outcome = await getAlertSpillover().enqueue({ jobId, name: 'dispatch-alert', data, lane });
+    if (outcome.spilled) {
+      queueLog.warn({ jobId, txHash: data.txHash, lane }, '💾 Redis unavailable; alert job journaled to disk');
+      return { id: jobId, spilled: true as const };
+    }
+    queueLog.info(
+      { jobId: outcome.result.id, txHash: data.txHash, lane, requestId: data.requestId },
+      '📨 Enqueued payment alert job',
+    );
+    return outcome.result;
   } catch (err: any) {
     queueLog.warn(
       { txHash: data.txHash, err: err.message },
-      'Failed to enqueue alert. Falling back to direct dispatch...',
+      'Failed to enqueue or journal alert. Falling back to direct dispatch...',
     );
     return processAlertDispatch(data);
   }
