@@ -35,6 +35,8 @@ import { deduplicationPipeline } from '../lib/deduplicator';
 import { allowanceSentinelService } from '../modules/soroban/allowance-sentinel.service';
 import { flashLoanDetector } from '../modules/soroban/flash-loan-detector';
 import { contractGovernanceSentinel } from '../modules/soroban/governance-sentinel.service';
+import { mevArbitrageDetector, type LedgerSwap } from '../modules/soroban/mev-detector';
+import { feeBumpSentinel, type HorizonFeeBumpRecord } from '../modules/stellar/feebump-sentinel';
 import { SignerWatcher, RedisSignerSnapshotStore } from '../modules/stellar/signer-watcher.service';
 import { MonitoredAddressRegistry } from '../lib/radix-index';
 import { scanLedgerOperations, operationMask } from '../lib/xdr-wasm';
@@ -1501,6 +1503,22 @@ export async function inspectTransactionForFlashLoans(input: {
  */
 export async function inspectContractGovernance(event: any) {
   return contractGovernanceSentinel.parseGovernanceEvent(event);
+}
+
+/**
+ * Intra-ledger MEV detector: scans every swap of one closed ledger for cyclic
+ * arbitrage and sandwich extraction and alerts affected pool subscribers (#970).
+ */
+export async function inspectLedgerForMev(swaps: readonly LedgerSwap[]) {
+  return mevArbitrageDetector.analyzeAndNotify(swaps);
+}
+
+/**
+ * Fee-bump sponsor sentinel: unwraps CAP-0015 envelopes, tracks rolling hourly
+ * fee burn per sponsor and alerts on fee surges or failed inner transactions (#978).
+ */
+export function inspectFeeBumpTransaction(record: HorizonFeeBumpRecord, networkPassphrase: string) {
+  return feeBumpSentinel.inspectHorizonTransaction(record, networkPassphrase);
 }
 
 /**
