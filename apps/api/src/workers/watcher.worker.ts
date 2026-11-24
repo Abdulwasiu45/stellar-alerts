@@ -29,6 +29,9 @@ import { trace, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
 import { FullJitterBackoff } from './watcher/stream-reconnect';
 import { runTrustlineSentinelPass } from '../modules/stellar/trustline-sentinel.service';
 import { runManageDataSentinelPass } from '../modules/stellar/manage-data-sentinel';
+import { runSponsorshipSentinelPass } from '../modules/stellar/sponsorship-sentinel';
+import { runAssetIssuerSentinelPass } from '../modules/stellar/asset-issuer-sentinel';
+import { timeSeriesRollupEngine } from '../modules/analytics/timeseries-rollup';
 import { sequencePreconditionWatcher } from '../modules/stellar/sequence-watcher.service';
 import { anchorLifecycleWatcher } from '../modules/stellar/anchor-watcher.service';
 import { stateSnapshotManager } from '../modules/watcher/snapshot.service';
@@ -393,6 +396,14 @@ export async function processPaymentRecord(
       }
 
       if (isNewPayment && payment) {
+        timeSeriesRollupEngine.record({
+          amount,
+          asset,
+          assetIssuer,
+          fromAddress,
+          receivedAt,
+        });
+
         // Best-effort, non-throwing by design (see services/checksumChain.service.ts):
         // a checksum-chain bug must never block real payment ingestion/alerting.
         await appendPaymentChecksum({
@@ -1060,6 +1071,11 @@ async function runTrustlineSentinel(publicKeys: string[]): Promise<void> {
   } catch (err: unknown) {
     log.warn(`[WatcherWorker] Sequence watcher pass failed: ${err instanceof Error ? err.message : String(err)}`);
   }
+  try {
+    await runSponsorshipSentinelPass(publicKeys);
+  } catch (err: unknown) {
+    log.warn(`[WatcherWorker] Sponsorship sentinel pass failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /**
@@ -1133,6 +1149,9 @@ export async function runWatcher() {
   watcherLifecycle.registerCleanup('horizonStreams', () => {
     for (const close of walletStreams.values()) close();
     walletStreams.clear();
+  });
+  watcherLifecycle.registerCleanup('timeSeriesRollups', async () => {
+    await timeSeriesRollupEngine.flush();
   });
   watcherLifecycle.registerCleanup('prisma', async () => {
     await prisma.$disconnect();
@@ -1328,6 +1347,13 @@ export async function runWatcher() {
 
   const pollTimer = setInterval(poll, 30000);
   watcherLifecycle.trackInterval(pollTimer);
+
+  const rollupFlushTimer = setInterval(() => {
+    timeSeriesRollupEngine.flush().catch((err: unknown) => {
+      log.warn({ err }, 'Failed to flush time-series rollups; buffered data will be retried');
+    });
+  }, 5000);
+  watcherLifecycle.trackInterval(rollupFlushTimer);
 
   const registryTimer = setInterval(() => {
     loadContractRegistry();

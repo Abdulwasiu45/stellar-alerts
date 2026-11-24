@@ -70,6 +70,16 @@ export type Payment = Prisma.PaymentModel
  */
 export type PaymentArchive = Prisma.PaymentArchiveModel
 /**
+ * Model ArchiveManifest
+ * 
+ */
+export type ArchiveManifest = Prisma.ArchiveManifestModel
+/**
+ * Model ArchiveCursor
+ * 
+ */
+export type ArchiveCursor = Prisma.ArchiveCursorModel
+/**
  * Model OutboxEvent
  * 
  */
@@ -185,6 +195,11 @@ export type PendingMultisigTransaction = Prisma.PendingMultisigTransactionModel
  */
 export type AnchorTransactionWatch = Prisma.AnchorTransactionWatchModel
 /**
+ * Model AnchorTransactionEvent
+ * 
+ */
+export type AnchorTransactionEvent = Prisma.AnchorTransactionEventModel
+/**
  * Model DexSwapWatch
  * 
  */
@@ -259,3 +274,18 @@ export type RefreshTokenHistory = Prisma.RefreshTokenHistoryModel
  * 
  */
 export type ContractWasmAudit = Prisma.ContractWasmAuditModel
+/**
+ * Model ContractAbiRegistry
+ * 
+ */
+export type ContractAbiRegistry = Prisma.ContractAbiRegistryModel
+/**
+ * Model TimeSeriesRollup
+ * 
+ */
+export type TimeSeriesRollup = Prisma.TimeSeriesRollupModel
+/**
+ * Model SorobanRentObservation
+ * 
+ */
+export type SorobanRentObservation = Prisma.SorobanRentObservationModel
