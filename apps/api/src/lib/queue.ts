@@ -13,6 +13,10 @@ import { createLogger } from './logger';
 import { publishAlertEvent, publishDeliveryEvent } from './realtime';
 import { deliverWithIdempotency } from './delivery';
 import { instrumentedWebhookFetch } from './webhook-telemetry';
+import {
+  createGuardedTransport,
+  type GuardedTransport,
+} from '../workers/dispatcher/transport-guard';
 import { persistDeadLetter } from './dead-letter';
 import { ssrfSafeFetch, validateUrlForSsrf } from '../utils/ssrf';
 import { decryptPersonalField } from '../utils/privacy';
@@ -165,6 +169,37 @@ async function readWebhookResponseBody(response: { text(): Promise<string> }): P
   }
 }
 
+/**
+ * Adapts the instrumented node-http transport to the guard's transport
+ * interface. The guard owns redirect policy (manual redirects, SSRF
+ * re-validation, quarantine); `instrumentedWebhookFetch` owns per-phase
+ * telemetry and the mid-transfer size/rate limits. Keeping the adapter here
+ * avoids a circular import between the two modules.
+ */
+function createInstrumentedGuardTransport(
+  meta?: { webhookId?: string; traceparent?: string },
+): GuardedTransport {
+  return async (url, init) => {
+    const response = await instrumentedWebhookFetch(url, {
+      method: init.method,
+      headers: init.headers,
+      body: init.body,
+      timeoutMs: init.timeoutMs,
+      webhookId: meta?.webhookId,
+      traceparent: meta?.traceparent,
+    });
+    return {
+      status: response.status,
+      ok: response.ok,
+      headers: response.headers,
+      // The instrumented transport already buffered (and size/rate-limited)
+      // the body, so no Web Stream is exposed here; the guard falls back to
+      // checking the buffered text for its final size cap.
+      text: () => response.text(),
+    };
+  };
+}
+
 export async function getOrCreateCircuitBreaker(
   webhookId: string,
 ): Promise<CircuitBreaker<any>> {
@@ -174,22 +209,27 @@ export async function getOrCreateCircuitBreaker(
 
   const breaker: CircuitBreaker<any> = new CircuitBreaker(
     async (url: string, payload: string, headers: Record<string, string>, meta?: WebhookDispatchMeta) => {
-      // Routed through the instrumented transport so every attempt contributes
-      // DNS / TCP / TLS / TTFB / response-stream spans and histograms, and so
-      // the subscriber receives a W3C traceparent it can join.
-      const response = await instrumentedWebhookFetch(url, {
+      // Routed through the transport guard so redirects are handled manually
+      // and every hop is re-validated against the SSRF policy, then through
+      // the instrumented node-http transport for per-phase telemetry and
+      // mid-transfer size/rate limits. The initial URL was already validated
+      // in `dispatchWebhookAndLog`, so only redirect hops need re-validation.
+      const guardedFetch = createGuardedTransport({
+        transport: createInstrumentedGuardTransport(meta),
+        validateInitialUrl: false,
+      });
+      const response = await guardedFetch(url, {
         method: "POST",
         headers,
         body: payload,
         timeoutMs: env.WEBHOOK_TIMEOUT_MS,
-        webhookId: meta?.webhookId,
-        traceparent: meta?.traceparent,
+        redirect: 'manual',
       });
 
       if (response.status === 429) {
         const error = new Error(`Rate limited: ${response.status}`) as Error & {
           statusCode?: number;
-          headers?: Headers;
+          headers?: Pick<Headers, 'get'>;
           responseBody?: string;
         };
         error.statusCode = 429;
