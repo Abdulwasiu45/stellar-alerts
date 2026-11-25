@@ -199,6 +199,16 @@ export interface PrismaClient<
   get user(): Prisma.UserDelegate<ExtArgs, { omit: OmitOpts }>;
 
   /**
+   * `prisma.webAuthnCredential`: Exposes CRUD operations for the **WebAuthnCredential** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more WebAuthnCredentials
+    * const webAuthnCredentials = await prisma.webAuthnCredential.findMany()
+    * ```
+    */
+  get webAuthnCredential(): Prisma.WebAuthnCredentialDelegate<ExtArgs, { omit: OmitOpts }>;
+
+  /**
    * `prisma.apiKey`: Exposes CRUD operations for the **ApiKey** model.
     * Example usage:
     * ```ts

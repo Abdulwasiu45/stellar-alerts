@@ -398,6 +398,7 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 
 export const ModelName = {
   User: 'User',
+  WebAuthnCredential: 'WebAuthnCredential',
   ApiKey: 'ApiKey',
   Wallet: 'Wallet',
   IngestionCursor: 'IngestionCursor',
@@ -537,6 +538,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.UserCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.UserCountAggregateOutputType> | number
+        }
+      }
+    }
+    WebAuthnCredential: {
+      payload: Prisma.$WebAuthnCredentialPayload<ExtArgs>
+      fields: Prisma.WebAuthnCredentialFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.WebAuthnCredentialFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.WebAuthnCredentialFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        findFirst: {
+          args: Prisma.WebAuthnCredentialFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.WebAuthnCredentialFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        findMany: {
+          args: Prisma.WebAuthnCredentialFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>[]
+        }
+        create: {
+          args: Prisma.WebAuthnCredentialCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        createMany: {
+          args: Prisma.WebAuthnCredentialCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.WebAuthnCredentialCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>[]
+        }
+        delete: {
+          args: Prisma.WebAuthnCredentialDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        update: {
+          args: Prisma.WebAuthnCredentialUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        deleteMany: {
+          args: Prisma.WebAuthnCredentialDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.WebAuthnCredentialUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.WebAuthnCredentialUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>[]
+        }
+        upsert: {
+          args: Prisma.WebAuthnCredentialUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        aggregate: {
+          args: Prisma.WebAuthnCredentialAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateWebAuthnCredential>
+        }
+        groupBy: {
+          args: Prisma.WebAuthnCredentialGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.WebAuthnCredentialGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.WebAuthnCredentialCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.WebAuthnCredentialCountAggregateOutputType> | number
         }
       }
     }
@@ -4216,6 +4291,24 @@ export const UserScalarFieldEnum = {
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
 
 
+export const WebAuthnCredentialScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  credentialId: 'credentialId',
+  nickname: 'nickname',
+  publicKeyCose: 'publicKeyCose',
+  algorithm: 'algorithm',
+  signCount: 'signCount',
+  transports: 'transports',
+  aaguid: 'aaguid',
+  backedUp: 'backedUp',
+  lastUsedAt: 'lastUsedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type WebAuthnCredentialScalarFieldEnum = (typeof WebAuthnCredentialScalarFieldEnum)[keyof typeof WebAuthnCredentialScalarFieldEnum]
+
+
 export const ApiKeyScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -5290,6 +5383,7 @@ export interface PrismaClientOptionsWithAdapter extends PrismaClientBaseOptions 
 export type PrismaClientOptions = PrismaClientOptionsWithAccelerateUrl | PrismaClientOptionsWithAdapter
 export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
+  webAuthnCredential?: Prisma.WebAuthnCredentialOmit
   apiKey?: Prisma.ApiKeyOmit
   wallet?: Prisma.WalletOmit
   ingestionCursor?: Prisma.IngestionCursorOmit

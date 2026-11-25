@@ -52,6 +52,7 @@ export const AnyNull = runtime.AnyNull
 
 export const ModelName = {
   User: 'User',
+  WebAuthnCredential: 'WebAuthnCredential',
   ApiKey: 'ApiKey',
   Wallet: 'Wallet',
   IngestionCursor: 'IngestionCursor',
@@ -128,6 +129,24 @@ export const UserScalarFieldEnum = {
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
+
+
+export const WebAuthnCredentialScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  credentialId: 'credentialId',
+  nickname: 'nickname',
+  publicKeyCose: 'publicKeyCose',
+  algorithm: 'algorithm',
+  signCount: 'signCount',
+  transports: 'transports',
+  aaguid: 'aaguid',
+  backedUp: 'backedUp',
+  lastUsedAt: 'lastUsedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type WebAuthnCredentialScalarFieldEnum = (typeof WebAuthnCredentialScalarFieldEnum)[keyof typeof WebAuthnCredentialScalarFieldEnum]
 
 
 export const ApiKeyScalarFieldEnum = {

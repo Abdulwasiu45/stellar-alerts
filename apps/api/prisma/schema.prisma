@@ -31,6 +31,27 @@ model User {
   telegramSyncCodes      TelegramSyncCode[]
   simulations            TransactionSimulation[]
   apiKeys                ApiKey[]
+  webAuthnCredentials    WebAuthnCredential[]
+}
+
+// ── WebAuthn / FIDO2 Hardware Security Keys (#993) ──────────────────────────
+model WebAuthnCredential {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId  String    @unique
+  nickname      String
+  publicKeyCose String    // Base64URL-encoded COSE public key
+  algorithm     Int       @default(-7) // COSE algorithm (-7=ES256, -8=EdDSA, -257=RS256)
+  signCount     Int       @default(0)
+  transports    String[]  @default([])
+  aaguid        String?
+  backedUp      Boolean   @default(false)
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId])
+  @@index([credentialId])
 }
 
 // ── Developer API Keys & Granular Bitmask RBAC (#730) ───────────────────────

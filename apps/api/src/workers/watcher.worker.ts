@@ -22,6 +22,10 @@ import { appendPaymentChecksum } from '../services/checksumChain.service';
 import { createLogger } from '../lib/logger';
 import { outboxService } from '../modules/outbox/outbox.service';
 import { velocityAnomalyDetector } from '../modules/security/velocity-detector';
+import {
+  addressPoisoningDetector,
+  type AddressPoisoningCheckResult,
+} from '../modules/security/address-poisoning.service';
 import { WorkerLifecycleManager } from '../lib/worker-lifecycle';
 import { startTelemetry, shutdownTelemetry } from '../lib/telemetry';
 import { startWorkerMetricsServer, stopWorkerMetricsServer } from '../lib/worker-metrics-server';
@@ -418,8 +422,39 @@ export async function processPaymentRecord(
           receivedAt,
         });
 
+        // Automated Phishing & Address-Poisoning Lookalike Dust Detector (#994)
+        let poisoningResult: AddressPoisoningCheckResult | null = null;
+        try {
+          poisoningResult = await addressPoisoningDetector.evaluateIncomingPayment({
+            walletId: wallet.id,
+            walletPublicKey: wallet.publicKey,
+            userId: wallet.userId,
+            paymentId: payment.id,
+            txHash,
+            fromAddress,
+            amount: Number(amount),
+            asset,
+            timestamp: receivedAt.getTime(),
+          });
+          if (poisoningResult.isPoisoning) {
+            span.setAttribute('security.addressPoisoning', true);
+          }
+        } catch (poisonErr: unknown) {
+          log.warn(
+            { err: poisonErr instanceof Error ? poisonErr.message : String(poisonErr), txHash },
+            'Address-poisoning detection evaluation skipped',
+          );
+        }
+
         if (wallet.userId) {
-          await publishPaymentEvent(wallet.userId, payment);
+          const realtimePayment = poisoningResult?.isPoisoning
+            ? {
+                ...payment,
+                isQuarantined: true,
+                securityWarning: poisoningResult.securityWarning,
+              }
+            : payment;
+          await publishPaymentEvent(wallet.userId, realtimePayment);
         }
 
         // Dynamic Anomaly Detection for Flash Account Draining and Velocity Spikes (#931)
@@ -437,6 +472,13 @@ export async function processPaymentRecord(
           log.warn({ err: velErr?.message, txHash }, 'Velocity anomaly detection evaluation skipped');
         }
 
+        // Suspected address-poisoning dust transactions are quarantined and have
+        // already emitted a high-priority security alert; suppress the standard
+        // payment notification so attackers cannot abuse normal feeds.
+        if (poisoningResult?.isPoisoning) {
+          span.setAttribute('payment.quarantined', true);
+          span.setAttribute('payment.enqueued', true);
+        } else {
         const alertJobPayload = {
           paymentId: payment.id,
           txHash,
@@ -535,6 +577,7 @@ export async function processPaymentRecord(
         }
 
         span.setAttribute('payment.enqueued', dispatched);
+        }
       }
 
       if (gap.hasGap) {
