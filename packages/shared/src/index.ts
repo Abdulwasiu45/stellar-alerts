@@ -12,6 +12,7 @@ export * from './soroban/scval-parser';
 // (Ed25519 public keys, contract IDs, muxed addresses, transaction hashes).
 export * from './strkey';
 export * from './utils/muxed';
+export * from './schemas/auth';
 export * from './schemas/vesting';
 export * from './schemas/defi';
 export * from './schemas/alerts';
