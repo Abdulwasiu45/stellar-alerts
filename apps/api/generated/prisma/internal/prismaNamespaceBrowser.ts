@@ -52,11 +52,14 @@ export const AnyNull = runtime.AnyNull
 
 export const ModelName = {
   User: 'User',
+  WebAuthnCredential: 'WebAuthnCredential',
   ApiKey: 'ApiKey',
   Wallet: 'Wallet',
   IngestionCursor: 'IngestionCursor',
   Payment: 'Payment',
   PaymentArchive: 'PaymentArchive',
+  ArchiveManifest: 'ArchiveManifest',
+  ArchiveCursor: 'ArchiveCursor',
   OutboxEvent: 'OutboxEvent',
   NotificationPreference: 'NotificationPreference',
   DeliveryLog: 'DeliveryLog',
@@ -80,6 +83,7 @@ export const ModelName = {
   MultisigSignerWatcher: 'MultisigSignerWatcher',
   PendingMultisigTransaction: 'PendingMultisigTransaction',
   AnchorTransactionWatch: 'AnchorTransactionWatch',
+  AnchorTransactionEvent: 'AnchorTransactionEvent',
   DexSwapWatch: 'DexSwapWatch',
   SorobanTopicIndex: 'SorobanTopicIndex',
   SorobanTopicIndexCursor: 'SorobanTopicIndexCursor',
@@ -94,7 +98,8 @@ export const ModelName = {
   MfaRecoveryCode: 'MfaRecoveryCode',
   RefreshSession: 'RefreshSession',
   RefreshTokenHistory: 'RefreshTokenHistory',
-  ContractWasmAudit: 'ContractWasmAudit'
+  ContractWasmAudit: 'ContractWasmAudit',
+  ContractAbiRegistry: 'ContractAbiRegistry'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -122,6 +127,24 @@ export const UserScalarFieldEnum = {
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
+
+
+export const WebAuthnCredentialScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  credentialId: 'credentialId',
+  nickname: 'nickname',
+  publicKeyCose: 'publicKeyCose',
+  algorithm: 'algorithm',
+  signCount: 'signCount',
+  transports: 'transports',
+  aaguid: 'aaguid',
+  backedUp: 'backedUp',
+  lastUsedAt: 'lastUsedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type WebAuthnCredentialScalarFieldEnum = (typeof WebAuthnCredentialScalarFieldEnum)[keyof typeof WebAuthnCredentialScalarFieldEnum]
 
 
 export const ApiKeyScalarFieldEnum = {
@@ -203,6 +226,36 @@ export const PaymentArchiveScalarFieldEnum = {
 } as const
 
 export type PaymentArchiveScalarFieldEnum = (typeof PaymentArchiveScalarFieldEnum)[keyof typeof PaymentArchiveScalarFieldEnum]
+
+
+export const ArchiveManifestScalarFieldEnum = {
+  id: 'id',
+  dataset: 'dataset',
+  year: 'year',
+  month: 'month',
+  objectKey: 'objectKey',
+  provider: 'provider',
+  location: 'location',
+  sha256: 'sha256',
+  sizeBytes: 'sizeBytes',
+  rowCount: 'rowCount',
+  minRecordAt: 'minRecordAt',
+  maxRecordAt: 'maxRecordAt',
+  verifiedAt: 'verifiedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type ArchiveManifestScalarFieldEnum = (typeof ArchiveManifestScalarFieldEnum)[keyof typeof ArchiveManifestScalarFieldEnum]
+
+
+export const ArchiveCursorScalarFieldEnum = {
+  scope: 'scope',
+  lastCreatedAt: 'lastCreatedAt',
+  lastId: 'lastId',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ArchiveCursorScalarFieldEnum = (typeof ArchiveCursorScalarFieldEnum)[keyof typeof ArchiveCursorScalarFieldEnum]
 
 
 export const OutboxEventScalarFieldEnum = {
@@ -557,11 +610,34 @@ export const AnchorTransactionWatchScalarFieldEnum = {
   anchorTxId: 'anchorTxId',
   protocol: 'protocol',
   lastKnownStatus: 'lastKnownStatus',
+  unifiedState: 'unifiedState',
+  statusChangedAt: 'statusChangedAt',
+  kind: 'kind',
+  anchorAccount: 'anchorAccount',
+  memo: 'memo',
+  memoType: 'memoType',
+  stellarTxHash: 'stellarTxHash',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
 export type AnchorTransactionWatchScalarFieldEnum = (typeof AnchorTransactionWatchScalarFieldEnum)[keyof typeof AnchorTransactionWatchScalarFieldEnum]
+
+
+export const AnchorTransactionEventScalarFieldEnum = {
+  id: 'id',
+  watchId: 'watchId',
+  type: 'type',
+  fromStatus: 'fromStatus',
+  toStatus: 'toStatus',
+  unifiedState: 'unifiedState',
+  stellarTxHash: 'stellarTxHash',
+  anomaly: 'anomaly',
+  detail: 'detail',
+  createdAt: 'createdAt'
+} as const
+
+export type AnchorTransactionEventScalarFieldEnum = (typeof AnchorTransactionEventScalarFieldEnum)[keyof typeof AnchorTransactionEventScalarFieldEnum]
 
 
 export const DexSwapWatchScalarFieldEnum = {
@@ -803,6 +879,17 @@ export const ContractWasmAuditScalarFieldEnum = {
 } as const
 
 export type ContractWasmAuditScalarFieldEnum = (typeof ContractWasmAuditScalarFieldEnum)[keyof typeof ContractWasmAuditScalarFieldEnum]
+
+
+export const ContractAbiRegistryScalarFieldEnum = {
+  contractId: 'contractId',
+  wasmHash: 'wasmHash',
+  abi: 'abi',
+  extractedAt: 'extractedAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContractAbiRegistryScalarFieldEnum = (typeof ContractAbiRegistryScalarFieldEnum)[keyof typeof ContractAbiRegistryScalarFieldEnum]
 
 
 export const SortOrder = {
