@@ -15,6 +15,7 @@ export * from './utils/muxed';
 export * from './schemas/vesting';
 export * from './schemas/defi';
 export * from './schemas/alerts';
+export * from './schemas/notifications';
 
 const dateDTO = z.union([z.date(), z.string()]);
 
