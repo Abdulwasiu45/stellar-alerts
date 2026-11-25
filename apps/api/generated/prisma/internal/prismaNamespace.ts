@@ -398,11 +398,14 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 
 export const ModelName = {
   User: 'User',
+  WebAuthnCredential: 'WebAuthnCredential',
   ApiKey: 'ApiKey',
   Wallet: 'Wallet',
   IngestionCursor: 'IngestionCursor',
   Payment: 'Payment',
   PaymentArchive: 'PaymentArchive',
+  ArchiveManifest: 'ArchiveManifest',
+  ArchiveCursor: 'ArchiveCursor',
   OutboxEvent: 'OutboxEvent',
   NotificationPreference: 'NotificationPreference',
   DeliveryLog: 'DeliveryLog',
@@ -426,6 +429,7 @@ export const ModelName = {
   MultisigSignerWatcher: 'MultisigSignerWatcher',
   PendingMultisigTransaction: 'PendingMultisigTransaction',
   AnchorTransactionWatch: 'AnchorTransactionWatch',
+  AnchorTransactionEvent: 'AnchorTransactionEvent',
   DexSwapWatch: 'DexSwapWatch',
   SorobanTopicIndex: 'SorobanTopicIndex',
   SorobanTopicIndexCursor: 'SorobanTopicIndexCursor',
@@ -440,7 +444,8 @@ export const ModelName = {
   MfaRecoveryCode: 'MfaRecoveryCode',
   RefreshSession: 'RefreshSession',
   RefreshTokenHistory: 'RefreshTokenHistory',
-  ContractWasmAudit: 'ContractWasmAudit'
+  ContractWasmAudit: 'ContractWasmAudit',
+  ContractAbiRegistry: 'ContractAbiRegistry'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -456,7 +461,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "apiKey" | "wallet" | "ingestionCursor" | "payment" | "paymentArchive" | "outboxEvent" | "notificationPreference" | "deliveryLog" | "paymentChecksum" | "dailyChecksumRoot" | "alertRule" | "alertRuleDispatchLog" | "telegramSyncCode" | "whatsAppDeliveryLog" | "webhook" | "webhookLog" | "webhookCircuitBreaker" | "exportJob" | "transactionSimulation" | "sorobanEventSnapshot" | "sorobanStateAudit" | "sorobanContractSubscription" | "sacTokenMintBurnEvent" | "sacTokenSupply" | "multisigTreasury" | "multisigSignerWatcher" | "pendingMultisigTransaction" | "anchorTransactionWatch" | "dexSwapWatch" | "sorobanTopicIndex" | "sorobanTopicIndexCursor" | "dexSwapEvent" | "securityAuditLog" | "notificationDelivery" | "notificationDeliveryAttempt" | "deduplicationLog" | "deadLetter" | "webhookSandboxReplay" | "deadLetterAudit" | "mfaRecoveryCode" | "refreshSession" | "refreshTokenHistory" | "contractWasmAudit"
+    modelProps: "user" | "webAuthnCredential" | "apiKey" | "wallet" | "ingestionCursor" | "payment" | "paymentArchive" | "archiveManifest" | "archiveCursor" | "outboxEvent" | "notificationPreference" | "deliveryLog" | "paymentChecksum" | "dailyChecksumRoot" | "alertRule" | "alertRuleDispatchLog" | "telegramSyncCode" | "whatsAppDeliveryLog" | "webhook" | "webhookLog" | "webhookCircuitBreaker" | "exportJob" | "transactionSimulation" | "sorobanEventSnapshot" | "sorobanStateAudit" | "sorobanContractSubscription" | "sacTokenMintBurnEvent" | "sacTokenSupply" | "multisigTreasury" | "multisigSignerWatcher" | "pendingMultisigTransaction" | "anchorTransactionWatch" | "anchorTransactionEvent" | "dexSwapWatch" | "sorobanTopicIndex" | "sorobanTopicIndexCursor" | "dexSwapEvent" | "securityAuditLog" | "notificationDelivery" | "notificationDeliveryAttempt" | "deduplicationLog" | "deadLetter" | "webhookSandboxReplay" | "deadLetterAudit" | "mfaRecoveryCode" | "refreshSession" | "refreshTokenHistory" | "contractWasmAudit" | "contractAbiRegistry"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -531,6 +536,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.UserCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.UserCountAggregateOutputType> | number
+        }
+      }
+    }
+    WebAuthnCredential: {
+      payload: Prisma.$WebAuthnCredentialPayload<ExtArgs>
+      fields: Prisma.WebAuthnCredentialFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.WebAuthnCredentialFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.WebAuthnCredentialFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        findFirst: {
+          args: Prisma.WebAuthnCredentialFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.WebAuthnCredentialFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        findMany: {
+          args: Prisma.WebAuthnCredentialFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>[]
+        }
+        create: {
+          args: Prisma.WebAuthnCredentialCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        createMany: {
+          args: Prisma.WebAuthnCredentialCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.WebAuthnCredentialCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>[]
+        }
+        delete: {
+          args: Prisma.WebAuthnCredentialDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        update: {
+          args: Prisma.WebAuthnCredentialUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        deleteMany: {
+          args: Prisma.WebAuthnCredentialDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.WebAuthnCredentialUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.WebAuthnCredentialUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>[]
+        }
+        upsert: {
+          args: Prisma.WebAuthnCredentialUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WebAuthnCredentialPayload>
+        }
+        aggregate: {
+          args: Prisma.WebAuthnCredentialAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateWebAuthnCredential>
+        }
+        groupBy: {
+          args: Prisma.WebAuthnCredentialGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.WebAuthnCredentialGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.WebAuthnCredentialCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.WebAuthnCredentialCountAggregateOutputType> | number
         }
       }
     }
@@ -901,6 +980,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.PaymentArchiveCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.PaymentArchiveCountAggregateOutputType> | number
+        }
+      }
+    }
+    ArchiveManifest: {
+      payload: Prisma.$ArchiveManifestPayload<ExtArgs>
+      fields: Prisma.ArchiveManifestFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ArchiveManifestFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ArchiveManifestFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>
+        }
+        findFirst: {
+          args: Prisma.ArchiveManifestFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ArchiveManifestFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>
+        }
+        findMany: {
+          args: Prisma.ArchiveManifestFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>[]
+        }
+        create: {
+          args: Prisma.ArchiveManifestCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>
+        }
+        createMany: {
+          args: Prisma.ArchiveManifestCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ArchiveManifestCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>[]
+        }
+        delete: {
+          args: Prisma.ArchiveManifestDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>
+        }
+        update: {
+          args: Prisma.ArchiveManifestUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>
+        }
+        deleteMany: {
+          args: Prisma.ArchiveManifestDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ArchiveManifestUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ArchiveManifestUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>[]
+        }
+        upsert: {
+          args: Prisma.ArchiveManifestUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveManifestPayload>
+        }
+        aggregate: {
+          args: Prisma.ArchiveManifestAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateArchiveManifest>
+        }
+        groupBy: {
+          args: Prisma.ArchiveManifestGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ArchiveManifestGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ArchiveManifestCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ArchiveManifestCountAggregateOutputType> | number
+        }
+      }
+    }
+    ArchiveCursor: {
+      payload: Prisma.$ArchiveCursorPayload<ExtArgs>
+      fields: Prisma.ArchiveCursorFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ArchiveCursorFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ArchiveCursorFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>
+        }
+        findFirst: {
+          args: Prisma.ArchiveCursorFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ArchiveCursorFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>
+        }
+        findMany: {
+          args: Prisma.ArchiveCursorFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>[]
+        }
+        create: {
+          args: Prisma.ArchiveCursorCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>
+        }
+        createMany: {
+          args: Prisma.ArchiveCursorCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ArchiveCursorCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>[]
+        }
+        delete: {
+          args: Prisma.ArchiveCursorDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>
+        }
+        update: {
+          args: Prisma.ArchiveCursorUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>
+        }
+        deleteMany: {
+          args: Prisma.ArchiveCursorDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ArchiveCursorUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ArchiveCursorUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>[]
+        }
+        upsert: {
+          args: Prisma.ArchiveCursorUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ArchiveCursorPayload>
+        }
+        aggregate: {
+          args: Prisma.ArchiveCursorAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateArchiveCursor>
+        }
+        groupBy: {
+          args: Prisma.ArchiveCursorGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ArchiveCursorGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ArchiveCursorCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ArchiveCursorCountAggregateOutputType> | number
         }
       }
     }
@@ -2606,6 +2833,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    AnchorTransactionEvent: {
+      payload: Prisma.$AnchorTransactionEventPayload<ExtArgs>
+      fields: Prisma.AnchorTransactionEventFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AnchorTransactionEventFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AnchorTransactionEventFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>
+        }
+        findFirst: {
+          args: Prisma.AnchorTransactionEventFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AnchorTransactionEventFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>
+        }
+        findMany: {
+          args: Prisma.AnchorTransactionEventFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>[]
+        }
+        create: {
+          args: Prisma.AnchorTransactionEventCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>
+        }
+        createMany: {
+          args: Prisma.AnchorTransactionEventCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AnchorTransactionEventCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>[]
+        }
+        delete: {
+          args: Prisma.AnchorTransactionEventDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>
+        }
+        update: {
+          args: Prisma.AnchorTransactionEventUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>
+        }
+        deleteMany: {
+          args: Prisma.AnchorTransactionEventDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AnchorTransactionEventUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AnchorTransactionEventUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>[]
+        }
+        upsert: {
+          args: Prisma.AnchorTransactionEventUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnchorTransactionEventPayload>
+        }
+        aggregate: {
+          args: Prisma.AnchorTransactionEventAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAnchorTransactionEvent>
+        }
+        groupBy: {
+          args: Prisma.AnchorTransactionEventGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AnchorTransactionEventGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AnchorTransactionEventCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AnchorTransactionEventCountAggregateOutputType> | number
+        }
+      }
+    }
     DexSwapWatch: {
       payload: Prisma.$DexSwapWatchPayload<ExtArgs>
       fields: Prisma.DexSwapWatchFieldRefs
@@ -3716,6 +4017,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    ContractAbiRegistry: {
+      payload: Prisma.$ContractAbiRegistryPayload<ExtArgs>
+      fields: Prisma.ContractAbiRegistryFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ContractAbiRegistryFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ContractAbiRegistryFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>
+        }
+        findFirst: {
+          args: Prisma.ContractAbiRegistryFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ContractAbiRegistryFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>
+        }
+        findMany: {
+          args: Prisma.ContractAbiRegistryFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>[]
+        }
+        create: {
+          args: Prisma.ContractAbiRegistryCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>
+        }
+        createMany: {
+          args: Prisma.ContractAbiRegistryCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ContractAbiRegistryCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>[]
+        }
+        delete: {
+          args: Prisma.ContractAbiRegistryDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>
+        }
+        update: {
+          args: Prisma.ContractAbiRegistryUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>
+        }
+        deleteMany: {
+          args: Prisma.ContractAbiRegistryDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ContractAbiRegistryUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ContractAbiRegistryUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>[]
+        }
+        upsert: {
+          args: Prisma.ContractAbiRegistryUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContractAbiRegistryPayload>
+        }
+        aggregate: {
+          args: Prisma.ContractAbiRegistryAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateContractAbiRegistry>
+        }
+        groupBy: {
+          args: Prisma.ContractAbiRegistryGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ContractAbiRegistryGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ContractAbiRegistryCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ContractAbiRegistryCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -3764,6 +4139,24 @@ export const UserScalarFieldEnum = {
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
+
+
+export const WebAuthnCredentialScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  credentialId: 'credentialId',
+  nickname: 'nickname',
+  publicKeyCose: 'publicKeyCose',
+  algorithm: 'algorithm',
+  signCount: 'signCount',
+  transports: 'transports',
+  aaguid: 'aaguid',
+  backedUp: 'backedUp',
+  lastUsedAt: 'lastUsedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type WebAuthnCredentialScalarFieldEnum = (typeof WebAuthnCredentialScalarFieldEnum)[keyof typeof WebAuthnCredentialScalarFieldEnum]
 
 
 export const ApiKeyScalarFieldEnum = {
@@ -3845,6 +4238,36 @@ export const PaymentArchiveScalarFieldEnum = {
 } as const
 
 export type PaymentArchiveScalarFieldEnum = (typeof PaymentArchiveScalarFieldEnum)[keyof typeof PaymentArchiveScalarFieldEnum]
+
+
+export const ArchiveManifestScalarFieldEnum = {
+  id: 'id',
+  dataset: 'dataset',
+  year: 'year',
+  month: 'month',
+  objectKey: 'objectKey',
+  provider: 'provider',
+  location: 'location',
+  sha256: 'sha256',
+  sizeBytes: 'sizeBytes',
+  rowCount: 'rowCount',
+  minRecordAt: 'minRecordAt',
+  maxRecordAt: 'maxRecordAt',
+  verifiedAt: 'verifiedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type ArchiveManifestScalarFieldEnum = (typeof ArchiveManifestScalarFieldEnum)[keyof typeof ArchiveManifestScalarFieldEnum]
+
+
+export const ArchiveCursorScalarFieldEnum = {
+  scope: 'scope',
+  lastCreatedAt: 'lastCreatedAt',
+  lastId: 'lastId',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ArchiveCursorScalarFieldEnum = (typeof ArchiveCursorScalarFieldEnum)[keyof typeof ArchiveCursorScalarFieldEnum]
 
 
 export const OutboxEventScalarFieldEnum = {
@@ -4199,11 +4622,34 @@ export const AnchorTransactionWatchScalarFieldEnum = {
   anchorTxId: 'anchorTxId',
   protocol: 'protocol',
   lastKnownStatus: 'lastKnownStatus',
+  unifiedState: 'unifiedState',
+  statusChangedAt: 'statusChangedAt',
+  kind: 'kind',
+  anchorAccount: 'anchorAccount',
+  memo: 'memo',
+  memoType: 'memoType',
+  stellarTxHash: 'stellarTxHash',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
 export type AnchorTransactionWatchScalarFieldEnum = (typeof AnchorTransactionWatchScalarFieldEnum)[keyof typeof AnchorTransactionWatchScalarFieldEnum]
+
+
+export const AnchorTransactionEventScalarFieldEnum = {
+  id: 'id',
+  watchId: 'watchId',
+  type: 'type',
+  fromStatus: 'fromStatus',
+  toStatus: 'toStatus',
+  unifiedState: 'unifiedState',
+  stellarTxHash: 'stellarTxHash',
+  anomaly: 'anomaly',
+  detail: 'detail',
+  createdAt: 'createdAt'
+} as const
+
+export type AnchorTransactionEventScalarFieldEnum = (typeof AnchorTransactionEventScalarFieldEnum)[keyof typeof AnchorTransactionEventScalarFieldEnum]
 
 
 export const DexSwapWatchScalarFieldEnum = {
@@ -4445,6 +4891,17 @@ export const ContractWasmAuditScalarFieldEnum = {
 } as const
 
 export type ContractWasmAuditScalarFieldEnum = (typeof ContractWasmAuditScalarFieldEnum)[keyof typeof ContractWasmAuditScalarFieldEnum]
+
+
+export const ContractAbiRegistryScalarFieldEnum = {
+  contractId: 'contractId',
+  wasmHash: 'wasmHash',
+  abi: 'abi',
+  extractedAt: 'extractedAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContractAbiRegistryScalarFieldEnum = (typeof ContractAbiRegistryScalarFieldEnum)[keyof typeof ContractAbiRegistryScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -4743,11 +5200,14 @@ export interface PrismaClientOptionsWithAdapter extends PrismaClientBaseOptions 
 export type PrismaClientOptions = PrismaClientOptionsWithAccelerateUrl | PrismaClientOptionsWithAdapter
 export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
+  webAuthnCredential?: Prisma.WebAuthnCredentialOmit
   apiKey?: Prisma.ApiKeyOmit
   wallet?: Prisma.WalletOmit
   ingestionCursor?: Prisma.IngestionCursorOmit
   payment?: Prisma.PaymentOmit
   paymentArchive?: Prisma.PaymentArchiveOmit
+  archiveManifest?: Prisma.ArchiveManifestOmit
+  archiveCursor?: Prisma.ArchiveCursorOmit
   outboxEvent?: Prisma.OutboxEventOmit
   notificationPreference?: Prisma.NotificationPreferenceOmit
   deliveryLog?: Prisma.DeliveryLogOmit
@@ -4771,6 +5231,7 @@ export type GlobalOmitConfig = {
   multisigSignerWatcher?: Prisma.MultisigSignerWatcherOmit
   pendingMultisigTransaction?: Prisma.PendingMultisigTransactionOmit
   anchorTransactionWatch?: Prisma.AnchorTransactionWatchOmit
+  anchorTransactionEvent?: Prisma.AnchorTransactionEventOmit
   dexSwapWatch?: Prisma.DexSwapWatchOmit
   sorobanTopicIndex?: Prisma.SorobanTopicIndexOmit
   sorobanTopicIndexCursor?: Prisma.SorobanTopicIndexCursorOmit
@@ -4786,6 +5247,7 @@ export type GlobalOmitConfig = {
   refreshSession?: Prisma.RefreshSessionOmit
   refreshTokenHistory?: Prisma.RefreshTokenHistoryOmit
   contractWasmAudit?: Prisma.ContractWasmAuditOmit
+  contractAbiRegistry?: Prisma.ContractAbiRegistryOmit
 }
 
 /* Types for Logging */
